@@ -1,5 +1,7 @@
 <script lang="ts">
 import {
+	ClefBass,
+	ClefTreble,
 	Layers,
 	Music2,
 	Piano,
@@ -19,16 +21,17 @@ import {
 	ToggleGroup,
 	ToggleGroupItem
 } from '#lib/components/ui/toggle-group/index.js';
+import * as Tooltip from '#lib/components/ui/tooltip/index.js';
 
 // —— 原型：仅用于展示交互状态，未接入任何练习逻辑 ——
 let clef = $state('treble');
-let keyType = $state('major');
-let keys = $state<string[]>(['C', 'G', 'F']);
+let keys = $state<string[]>(['C']);
 let range = $state<number[]>([48, 72]);
 let durations = $state<string[]>(['quarter', 'eighth']);
 let texture = $state('single');
 let includeRests = $state(true);
 let includeAccidentals = $state(false);
+let accidentalProbability = $state(0.1);
 let includeDots = $state(false);
 let notesPerExercise = $state(16);
 let exerciseCount = $state('10');
@@ -57,24 +60,19 @@ const clefLabels: Record<string, string> = {
 	bass: '低音谱号',
 	grand: '大谱表'
 };
-const keyTypeLabels: Record<string, string> = {
-	major: '大调',
-	minor: '小调',
-	both: '大小调'
-};
 const keyOptions = [
-	{ id: 'C', label: 'C' },
-	{ id: 'G', label: 'G' },
-	{ id: 'D', label: 'D' },
-	{ id: 'A', label: 'A' },
-	{ id: 'E', label: 'E' },
-	{ id: 'B', label: 'B' },
-	{ id: 'F#', label: 'F♯' },
-	{ id: 'F', label: 'F' },
-	{ id: 'Bb', label: 'B♭' },
-	{ id: 'Eb', label: 'E♭' },
-	{ id: 'Ab', label: 'A♭' },
-	{ id: 'Db', label: 'D♭' }
+	{ id: 'C', label: 'C', hint: '无升降号' },
+	{ id: 'G', label: 'G', hint: '1 个升号（F♯）' },
+	{ id: 'D', label: 'D', hint: '2 个升号（F♯、C♯）' },
+	{ id: 'A', label: 'A', hint: '3 个升号（F♯、C♯、G♯）' },
+	{ id: 'E', label: 'E', hint: '4 个升号（F♯、C♯、G♯、D♯）' },
+	{ id: 'B', label: 'B', hint: '5 个升号' },
+	{ id: 'F#', label: 'F♯', hint: '6 个升号' },
+	{ id: 'C#', label: 'C♯', hint: '7 个升号' },
+	{ id: 'F', label: 'F', hint: '1 个降号（B♭）' },
+	{ id: 'Bb', label: 'B♭', hint: '2 个降号（B♭、E♭）' },
+	{ id: 'Eb', label: 'E♭', hint: '3 个降号（B♭、E♭、A♭）' },
+	{ id: 'Ab', label: 'A♭', hint: '4 个降号（B♭、E♭、A♭、D♭）' }
 ];
 const keyLabels: Record<string, string> = Object.fromEntries(
 	keyOptions.map((option) => [option.id, option.label])
@@ -95,9 +93,9 @@ const textureLabels: Record<string, string> = {
 	chord: '三和弦'
 };
 
-// 钢琴键盘示意：C2 – C6
-const KB_MIN = 36;
-const KB_MAX = 84;
+// 钢琴键盘示意：A0 – C8（88 键完整音域）
+const KB_MIN = 21;
+const KB_MAX = 108;
 const WHITE_PCS = [0, 2, 4, 5, 7, 9, 11];
 const BLACK_AFTER_PCS = [0, 2, 5, 7, 9];
 const whiteKeys = Array.from(
@@ -120,7 +118,8 @@ const inRange = (midi: number) => midi >= range[0] && midi <= range[1];
 const rangePresets = [
 	{ id: 'near', label: '中央C附近', value: [60, 72] },
 	{ id: 'basic', label: '常用音域', value: [48, 72] },
-	{ id: 'wide', label: '宽音域', value: [36, 84] }
+	{ id: 'wide', label: '宽音域', value: [36, 84] },
+	{ id: 'full', label: '完整音域', value: [21, 108] }
 ];
 const applyPreset = (value: number[]) => {
 	range = [...value];
@@ -148,103 +147,24 @@ const difficulty = $derived.by(() => {
 	return '挑战';
 });
 
-const summaryKeyType = $derived(
-	keys.length > 0
-		? `${keyTypeLabels[keyType]} · ${keys.map((id) => keyLabels[id]).join('、')}`
-		: '未选择调号'
+const summaryKeys = $derived(
+	keys.length > 0 ? keys.map((id) => keyLabels[id]).join('、') : '未选择调号'
 );
 const summaryDurations = $derived(
 	durations.length > 0
 		? durations.map((id) => durationLabels[id]).join('、')
 		: '未选择'
 );
+const summaryAccidentals = $derived(
+	includeAccidentals
+		? `包含 · 概率 ${Math.round(accidentalProbability * 100)}%`
+		: '不包含'
+);
 </script>
 
 <svelte:head>
 	<title>视奏练习 · 配置</title>
 </svelte:head>
-
-{#snippet staffIcon(
-	kind: 'treble' | 'bass' | 'grand'
-)}
-	{#if kind === 'grand'}
-		<svg viewBox="0 0 72 44" class="size-16" aria-hidden="true">
-			<title>大谱表示意</title>
-			<g stroke="currentColor" stroke-width="1" opacity="0.55">
-				{#each [5, 9, 13, 17, 21] as y (y)}
-					<line x1="6" y1={y} x2="66" y2={y} />
-				{/each}
-				{#each [27, 31, 35, 39, 43] as y (y)}
-					<line x1="6" y1={y} x2="66" y2={y} />
-				{/each}
-			</g>
-			<path
-				d="M13 4 C 7 12, 15 16, 10 22 C 15 28, 7 32, 13 44"
-				fill="none"
-				stroke="currentColor"
-				stroke-width="1.6"
-				stroke-linecap="round"
-			/>
-			<g fill="currentColor">
-				<ellipse
-					cx="40"
-					cy="17"
-					rx="5.4"
-					ry="4"
-					transform="rotate(-18 40 17)"
-				/>
-				<rect x="44.6" y="5" width="1.6" height="12" />
-				<ellipse
-					cx="28"
-					cy="31"
-					rx="5.4"
-					ry="4"
-					transform="rotate(-18 28 31)"
-				/>
-				<rect x="32.6" y="19" width="1.6" height="12" />
-			</g>
-		</svg>
-	{:else}
-		<svg viewBox="0 0 72 44" class="size-16" aria-hidden="true">
-			<title>{kind === 'treble' ? '高音谱表示意' : '低音谱表示意'}</title>
-			<g stroke="currentColor" stroke-width="1" opacity="0.55">
-				{#each [8, 16, 24, 32, 40] as y (y)}
-					<line x1="6" y1={y} x2="66" y2={y} />
-				{/each}
-			</g>
-			<g fill="currentColor">
-				<ellipse
-					cx="42"
-					cy={kind === 'treble' ? 20 : 34}
-					rx="6"
-					ry="4.4"
-					transform={kind === 'treble'
-						? 'rotate(-18 42 20)'
-						: 'rotate(-18 42 34)'}
-				/>
-				{#if kind === 'treble'}
-					<rect x="47" y="6" width="1.8" height="14" />
-					<path
-						d="M42 8 q6 3 4 8"
-						fill="none"
-						stroke="currentColor"
-						stroke-width="1.4"
-						stroke-linecap="round"
-					/>
-				{:else}
-					<rect x="47" y="22" width="1.8" height="14" />
-					<path
-						d="M42 38 q6 3 4 8"
-						fill="none"
-						stroke="currentColor"
-						stroke-width="1.4"
-						stroke-linecap="round"
-					/>
-				{/if}
-			</g>
-		</svg>
-	{/if}
-{/snippet}
 
 {#snippet summaryRow(
 	label: string,
@@ -307,33 +227,42 @@ const summaryDurations = $derived(
 					>
 						<ToggleGroupItem
 							value="treble"
-							class="h-auto flex-col items-start gap-2 px-4 py-4 text-left data-[state=on]:border-primary! data-[state=on]:bg-primary/5! data-[state=on]:shadow-sm"
+							class="h-auto items-center gap-3 px-4 py-3 text-left data-[state=on]:border-primary! data-[state=on]:bg-primary/5! data-[state=on]:shadow-sm"
 						>
-							{@render staffIcon('treble')}
-							<span class="text-sm font-medium">高音谱号</span>
-							<span class="text-xs font-normal text-muted-foreground"
-								>右手 · 中高音区</span
-							>
+							<ClefTreble class="size-8 shrink-0 text-primary" />
+							<span class="flex flex-col gap-0.5">
+								<span class="text-sm font-medium">高音谱号</span>
+								<span class="text-xs font-normal text-muted-foreground"
+									>右手 · 中高音区</span
+								>
+							</span>
 						</ToggleGroupItem>
 						<ToggleGroupItem
 							value="bass"
-							class="h-auto flex-col items-start gap-2 px-4 py-4 text-left data-[state=on]:border-primary! data-[state=on]:bg-primary/5! data-[state=on]:shadow-sm"
+							class="h-auto items-center gap-3 px-4 py-3 text-left data-[state=on]:border-primary! data-[state=on]:bg-primary/5! data-[state=on]:shadow-sm"
 						>
-							{@render staffIcon('bass')}
-							<span class="text-sm font-medium">低音谱号</span>
-							<span class="text-xs font-normal text-muted-foreground"
-								>左手 · 中低音区</span
-							>
+							<ClefBass class="size-8 shrink-0 text-primary" />
+							<span class="flex flex-col gap-0.5">
+								<span class="text-sm font-medium">低音谱号</span>
+								<span class="text-xs font-normal text-muted-foreground"
+									>左手 · 中低音区</span
+								>
+							</span>
 						</ToggleGroupItem>
 						<ToggleGroupItem
 							value="grand"
-							class="h-auto flex-col items-start gap-2 px-4 py-4 text-left data-[state=on]:border-primary! data-[state=on]:bg-primary/5! data-[state=on]:shadow-sm"
+							class="h-auto items-center gap-3 px-4 py-3 text-left data-[state=on]:border-primary! data-[state=on]:bg-primary/5! data-[state=on]:shadow-sm"
 						>
-							{@render staffIcon('grand')}
-							<span class="text-sm font-medium">大谱表</span>
-							<span class="text-xs font-normal text-muted-foreground"
-								>双手 · 两行谱表</span
-							>
+							<span class="flex shrink-0 items-end gap-1.5">
+								<ClefTreble class="size-7 text-primary" />
+								<ClefBass class="size-7 text-primary" />
+							</span>
+							<span class="flex flex-col gap-0.5">
+								<span class="text-sm font-medium">大谱表</span>
+								<span class="text-xs font-normal text-muted-foreground"
+									>双手 · 两行谱表</span
+								>
+							</span>
 						</ToggleGroupItem>
 					</ToggleGroup>
 				</fieldset>
@@ -356,20 +285,6 @@ const summaryDurations = $derived(
 			</Card.Header>
 			<Card.Content class="flex flex-col gap-4">
 				<fieldset>
-					<legend class="mb-2 text-sm font-medium">调式</legend>
-					<ToggleGroup
-						type="single"
-						bind:value={keyType}
-						variant="outline"
-						spacing={2}
-					>
-						<ToggleGroupItem value="major">大调</ToggleGroupItem>
-						<ToggleGroupItem value="minor">小调</ToggleGroupItem>
-						<ToggleGroupItem value="both">两者皆可</ToggleGroupItem>
-					</ToggleGroup>
-				</fieldset>
-
-				<fieldset>
 					<legend class="mb-2 text-sm font-medium">调号</legend>
 					<ToggleGroup
 						type="multiple"
@@ -379,13 +294,26 @@ const summaryDurations = $derived(
 						class="flex w-full flex-wrap gap-2"
 					>
 						{#each keyOptions as option (option.id)}
-							<ToggleGroupItem
-								value={option.id}
-								size="sm"
-								class="h-9 min-w-12 rounded-full px-3.5 data-[state=on]:border-primary! data-[state=on]:bg-primary! data-[state=on]:text-primary-foreground!"
-							>
-								{option.label}
-							</ToggleGroupItem>
+							<Tooltip.Root>
+								<Tooltip.Trigger
+									>{#snippet child({
+										props
+									})}
+										<ToggleGroupItem
+											{...props}
+											value={option.id}
+											size="sm"
+											class="h-9 min-w-12 rounded-full px-3.5 data-[state=on]:border-primary! data-[state=on]:bg-primary! data-[state=on]:text-primary-foreground!"
+										>
+											{option.label}
+										</ToggleGroupItem>
+									{/snippet}</Tooltip.Trigger
+								>
+								<Tooltip.Content>
+									{option.label}
+									大调 · {option.hint}
+								</Tooltip.Content>
+							</Tooltip.Root>
 						{/each}
 					</ToggleGroup>
 					{#if keys.length === 0}
@@ -412,6 +340,27 @@ const summaryDurations = $derived(
 						bind:checked={includeAccidentals}
 					/>
 				</div>
+				{#if includeAccidentals}
+					<div class="mt-4 space-y-2">
+						<div class="flex items-center justify-between">
+							<span class="text-sm font-medium">变音出现概率</span>
+							<span class="text-sm tabular-nums text-muted-foreground"
+								>{Math.round(accidentalProbability * 100)}%</span
+							>
+						</div>
+						<Slider
+							type="single"
+							min={0}
+							max={1}
+							step={0.05}
+							bind:value={accidentalProbability}
+							aria-label="变音出现概率"
+						/>
+						<p class="text-xs text-muted-foreground">
+							每个音符以此概率附加升、降或还原记号。
+						</p>
+					</div>
+				{/if}
 			</Card.Content>
 		</Card.Root>
 
@@ -430,7 +379,7 @@ const summaryDurations = $derived(
 				<div class="rounded-xl border bg-muted/40 p-3">
 					<div class="mb-2 flex items-center justify-between">
 						<span class="text-xs font-medium text-muted-foreground"
-							>音域预览（C2 – C6）</span
+							>音域预览（A0 – C8）</span
 						>
 						<span
 							class="flex items-center gap-1.5 text-xs text-muted-foreground"
@@ -448,7 +397,7 @@ const summaryDurations = $derived(
 					>
 						{#each whiteKeys as midi, index (midi)}
 							<div
-								class="absolute top-0 flex h-full items-end justify-center rounded-b-[4px] border border-input pb-1.5 text-[10px] transition-colors {inRange(
+								class="absolute top-0 flex h-full items-end justify-center overflow-hidden rounded-b-lg border border-input pb-1.5 text-[9px] transition-colors {inRange(
 									midi
 								)
 									? 'bg-card shadow-[inset_0_-5px_0_0_var(--primary)]'
@@ -724,13 +673,14 @@ const summaryDurations = $derived(
 			<Card.Content>
 				<div class="flex flex-col">
 					{@render summaryRow('谱号', clefLabels[clef])}
-					{@render summaryRow('调号', summaryKeyType)}
+					{@render summaryRow('调号', summaryKeys)}
 					{@render summaryRow(
 						'音域',
 						`${noteName(range[0])} – ${noteName(range[1])}`
 					)}
 					{@render summaryRow('时值', summaryDurations)}
 					{@render summaryRow('织体', textureLabels[texture])}
+					{@render summaryRow('变音记号', summaryAccidentals)}
 					{@render summaryRow('每题', `${notesPerExercise} 个音符`)}
 					{@render summaryRow('题数', countLabels[exerciseCount])}
 					{@render summaryRow(
