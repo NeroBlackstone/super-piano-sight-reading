@@ -2,7 +2,14 @@
 	"$schema": "https://biomejs.dev/schemas/2.5.15/schema.json",
 	"files": {
 		"ignoreUnknown": true,
-		"includes": ["**", "!.svelte-kit", "!build", "!**/.DS_Store"]
+		"includes": [
+			"**",
+			"!.svelte-kit",
+			"!build",
+			"!project.inlang",
+			"!src/lib/paraglide",
+			"!**/.DS_Store"
+		]
 	},
 	"formatter": {
 		"enabled": true,
@@ -35,6 +42,16 @@
 		}
 	},
 	"overrides": [
+		{
+			"includes": ["src/app.html"],
+			"linter": {
+				"rules": {
+					"a11y": {
+						"useValidLang": "off"
+					}
+				}
+			}
+		},
 		{
 			"includes": ["**/*.svelte"],
 			"linter": {
