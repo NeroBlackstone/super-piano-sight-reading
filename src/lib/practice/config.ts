@@ -82,7 +82,7 @@ export function createDefaultConfig(): PracticeConfig {
 		tempo: 72,
 		durations: ['quarter'],
 		rests: { enabled: true, probability: 0.15 },
-		accidentals: { enabled: false, probability: 0.1 },
+		accidentals: { enabled: false, probability: 0.05 },
 		dots: { enabled: false, probability: 0.15 },
 		triplets: { enabled: false, probability: 0.1 },
 		measuresPerExercise: 16

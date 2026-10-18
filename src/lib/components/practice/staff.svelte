@@ -123,11 +123,11 @@ function draw(
 				voices: [voice],
 				options: { leftBar: true }
 			});
-			// 每行行首重复谱号；调号与拍号只在全曲开头
+			// 每行行首重复谱号与调号（标准记谱法）；拍号只在全曲开头
 			if (i === 0) {
 				stave.addClef(exercise.clef);
+				stave.addKeySignature(exercise.key);
 				if (rowIndex === 0) {
-					stave.addKeySignature(exercise.key);
 					stave.addTimeSignature(exercise.timeSignature);
 				}
 			}
