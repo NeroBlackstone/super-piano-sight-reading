@@ -1,86 +1,108 @@
-# 钢琴视奏练习器
+# Super Piano Sight-Reading
 
-一个网页版钢琴视奏（sight-reading）练习工具。通过自定义调号、谱号、音域、节奏等参数生成视奏题目，帮助钢琴学习者练习快速读谱。
+A web-based piano sight-reading practice tool. Generate sight-reading exercises from custom key signatures, clefs, ranges, rhythms, and tempos to help piano learners practise reading music at sight.
 
-## 页面规划
+**English** | [简体中文](./README.zh.md)
 
-| 页面 | 说明 | 状态 |
+## Status
+
+> Currently at the **prototype stage**: the config page controls are interactive — the summary sidebar and the piano keyboard highlight follow your changes in real time — but **exercise generation and practice logic are not wired up yet**; the "Start Practice" button does not navigate anywhere.
+
+## Pages
+
+| Page | Description | Status |
 | --- | --- | --- |
-| 配置页 `/` | 纯配置：谱号（高音/低音/大谱表）、调号与调式、音域（含钢琴键盘可视化）、音符时值与织体、题量与限时等 | ✅ 前端原型（`src/routes/+page.svelte`） |
-| 练习页 | 展示生成的谱面、倒计时、判定与结果反馈 | ⬜ 待开发 |
+| Config `/` | Pure configuration: clef, key signature, range, time signature, tempo, durations, rests/accidentals/dots/triplets, exercises per session | ✅ front-end prototype (`src/routes/+page.svelte`) |
+| Practice | Shows the generated score, countdown, judgement, and results | ⬜ planned |
 
-> 当前处于原型阶段：配置页控件可交互、摘要与键盘高亮会实时跟随，但**尚未接入出题与练习逻辑**，「开始练习」按钮暂不跳转。
+## Configuration options (current prototype)
 
-## 配置项一览
+- **Clef**: treble (right hand) / bass (left hand)
+- **Key signature**: multi-select from 12 keys (drawn randomly during practice); optional accidentals with an adjustable probability
+- **Range**: MIDI 21–108 (A0–C8) dual-thumb slider with a live piano keyboard preview and quick presets (near middle C / basic / wide / full keyboard)
+- **Time signature**: 4/4, 3/4, 2/4, 6/8 — the denominator picks the default note value and the beat unit used by BPM
+- **Tempo**: 40–208 BPM; switching time signatures rescales the BPM so the absolute speed stays the same
+- **Durations**: multi-select whole / half / quarter / eighth / sixteenth
+- **Rests / accidentals / dots / triplets**: each is an on/off switch with its own probability slider (0–100%); switching one off keeps the last probability
+- **Measures per exercise**: 4–32, step 4
+- **Summary sidebar**: real-time summary of the current config, a difficulty hint (beginner / intermediate / challenge), and validation (at least one key and one duration are required)
 
-- **谱号**：高音谱号（右手）、低音谱号（左手）、大谱表（双手）
-- **调式**：大调 / 小调 / 两者皆可
-- **调号**：12 个调多选，练习时随机抽取；可选是否包含临时变音记号
-- **音域**：C2 – C6 区间双滑块调节，带钢琴键盘高亮预览与快捷预设（中央C附近 / 常用音域 / 宽音域）
-- **音符与节奏**：时值多选（全、二分、四分、八分、十六分）、织体（单音 / 双音 / 三和弦）、休止符、附点与连音线
-- **练习设置**：每题音符数、每次题数（10/20/30/不限）、每题限时与秒数
-- **配置摘要**：右侧栏实时汇总当前配置并给出难度提示
+Planned but not yet in the prototype: grand staff (both hands), major/minor mode, texture (single notes / dyads / triads), exercises per session, and a per-exercise time limit.
 
-## 技术栈
+## Practice config data structure
 
-- [SvelteKit 3](https://svelte.dev/docs/kit)（Svelte 5 runes）+ TypeScript
-- [Tailwind CSS 4](https://tailwindcss.com) + [shadcn-svelte](https://shadcn-svelte.com)（`src/lib/components/ui`）
-- [@lucide/svelte](https://lucide.dev) 图标
-- [Biome](https://biomejs.dev) 格式化与 lint
-- 包管理器：bun；构建产物：`@sveltejs/adapter-static`（静态站点）
+All pre-practice parameters live in a single typed object, `PracticeConfig`, defined in [`src/lib/practice/config.ts`](src/lib/practice/config.ts):
 
-## 开发
+- the config page holds exactly one `$state<PracticeConfig>` as the single source of truth; derived display (difficulty, summary rows, beat unit) stays in the component as `$derived` and is not stored in the config
+- toggles pair up with their probability as `OptionalFeature { enabled, probability }`
+- `createDefaultConfig()` returns a fresh object on every call (also serves as the reset button's source)
+- shared bounds are exported as constants: `KEYBOARD_MIN/MAX`, `TEMPO_MIN/MAX`, `MEASURES_MIN/MAX/STEP`
+- groundwork for the planned localStorage persistence (add a `version` field when it lands)
+
+## Tech stack
+
+- [SvelteKit 3](https://svelte.dev/docs/kit) (Svelte 5 runes) + TypeScript
+- [Tailwind CSS 4](https://tailwindcss.com) + [shadcn-svelte](https://shadcn-svelte.com) (`src/lib/components/ui`)
+- [@lucide/svelte](https://lucide.dev) icons
+- [@inlang/paraglide-js](https://inlang.com/m/gerre34r/library-inlang-paraglideJs) i18n (English / 中文, switchable in the header)
+- [Biome](https://biomejs.dev) formatting and linting
+- Package manager: bun; build target: static site via `@sveltejs/adapter-static`
+
+## Development
 
 ```sh
-bun install        # 安装依赖
-bun run dev        # 启动开发服务器
-bun run dev -- --open  # 启动并在浏览器中打开
+bun install        # install dependencies
+bun run dev        # start the dev server
+bun run dev -- --open  # start and open in the browser
 ```
 
-## 常用脚本
+## Scripts
 
 ```sh
-bun run check      # svelte-check 类型与模板检查
-bun run lint       # biome 检查
-bun run lint:fix   # biome 自动修复
-bun run format     # biome 格式化
-bun run build      # 生产构建（输出到 build/）
-bun run preview    # 预览生产构建
+bun run check      # svelte-check types and templates
+bun run lint       # biome check
+bun run lint:fix   # biome auto-fix
+bun run format     # biome format
+bun run build      # production build (output to build/)
+bun run preview    # preview the production build
 ```
 
-## 项目结构
+## Project structure
 
 ```
 src/
 ├── routes/
-│   ├── +layout.svelte     # 全局布局（引入样式与 favicon）
-│   ├── +page.svelte       # 配置页（当前原型）
-│   └── layout.css         # Tailwind 主题与 shadcn 设计令牌
+│   ├── +layout.svelte     # global layout (styles + favicon)
+│   ├── +page.svelte       # config page (current prototype)
+│   └── layout.css         # Tailwind theme and shadcn design tokens
 └── lib/
-    ├── components/ui/     # shadcn-svelte 组件（button、card、slider…）
-    └── utils.ts           # cn() 等工具函数
+    ├── components/ui/     # shadcn-svelte components (button, card, slider…)
+    ├── practice/
+    │   └── config.ts      # PracticeConfig types, defaults, shared bounds
+    └── utils.ts           # cn() helpers
 ```
 
-## 脚手架来源
+## Scaffold source
 
-由 [`sv`](https://github.com/sveltejs/cli) 创建，可用以下命令复现同配置：
+Created with the [`sv`](https://github.com/sveltejs/cli) CLI; this command reproduces the same setup:
 
 ```sh
 bun x sv@1.1.1 create --template minimal --types ts --add tailwindcss="plugins:none" --install bun super-piano-sight-reading
 ```
 
-添加官方集成功能：
+Add official integrations with:
 
 ```sh
 npx sv add
 ```
 
-## 路线图
+## Roadmap
 
-- [x] 项目初始化（SvelteKit + Tailwind + shadcn-svelte）
-- [x] 配置页原型
-- [ ] 练习页原型（谱面展示、计时、结果反馈）
-- [ ] 出题逻辑（按配置生成题目数据）
-- [ ] 谱面渲染（五线谱绘制）
-- [ ] 答题判定与成绩记录
-- [ ] 配置持久化（localStorage）与难度推荐
+- [x] Project init (SvelteKit + Tailwind + shadcn-svelte)
+- [x] Config page prototype
+- [x] Practice config data structure (`PracticeConfig`)
+- [ ] Practice page prototype (score display, timing, results)
+- [ ] Exercise generation (produce exercise data from a config)
+- [ ] Score rendering (five-line staff drawing)
+- [ ] Answer judgement and score records
+- [ ] Config persistence (localStorage) and difficulty recommendation
