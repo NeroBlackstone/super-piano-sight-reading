@@ -1,4 +1,5 @@
 <script lang="ts">
+import { onMount } from 'svelte';
 import ClefCard from '#lib/components/practice/clef-card.svelte';
 import KeysCard from '#lib/components/practice/keys-card.svelte';
 import PracticeCard from '#lib/components/practice/practice-card.svelte';
@@ -15,10 +16,20 @@ import {
 	type TimeSignature
 } from '#lib/practice/config.js';
 import { defaultUnitByDenominator } from '#lib/practice/options.js';
+import { loadPracticeConfig } from '#lib/practice/session.js';
 
-// —— 原型：仅用于展示交互状态，未接入任何练习逻辑 ——
+// —— 原型：仅用于展示交互状态 ——
 // 练习配置唯一真源，结构与默认值见 #lib/practice/config.js
 let config = $state<PracticeConfig>(createDefaultConfig());
+
+// 从练习页返回时恢复上次开始练习的配置
+onMount(() => {
+	const saved = loadPracticeConfig();
+	if (saved) {
+		config = saved;
+		prevTimeSignature = saved.timeSignature;
+	}
+});
 
 // 拍号变化时：按分母重置默认时值（/4 拍 → 四分，/8 拍 → 八分），
 // 并等比换算 BPM 保持绝对速度不变；拍号必选 —— bits-ui 单选组再次点击

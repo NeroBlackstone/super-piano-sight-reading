@@ -11,6 +11,4 @@ let { children }: LayoutProps = $props();
 	<link rel="icon" href={favicon}>
 </svelte:head>
 
-<Tooltip.Provider>
-	{@render children()}
-</Tooltip.Provider>
+<Tooltip.Provider> {@render children()} </Tooltip.Provider>

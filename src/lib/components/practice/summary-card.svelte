@@ -15,8 +15,15 @@ import {
 	tempoLabel,
 	timeSignatureLabels
 } from '#lib/practice/options.js';
+import { savePracticeConfig } from '#lib/practice/session.js';
+import { goto } from '$app/navigation';
 
 let { config }: { config: PracticeConfig } = $props();
+
+function startPractice() {
+	savePracticeConfig(config);
+	goto('/practice');
+}
 
 const beatUnit = $derived(beatUnitFor(config.timeSignature));
 
@@ -107,6 +114,7 @@ const summaryAccidentals = $derived(
 				size="lg"
 				class="w-full"
 				disabled={config.keys.length === 0 || config.durations.length === 0}
+				onclick={startPractice}
 			>
 				<Play class="size-4" />
 				{m.summaryStart()}
