@@ -1,6 +1,5 @@
 <script lang="ts">
 import { Play, RotateCcw } from '@lucide/svelte';
-import { Badge } from '#lib/components/ui/badge/index.js';
 import { Button } from '#lib/components/ui/button/index.js';
 import * as Card from '#lib/components/ui/card/index.js';
 import { Separator } from '#lib/components/ui/separator/index.js';
@@ -26,22 +25,6 @@ function startPractice() {
 }
 
 const beatUnit = $derived(beatUnitFor(config.timeSignature));
-
-const difficulty = $derived.by(() => {
-	let score = 0;
-	const width = config.range[1] - config.range[0];
-	if (width > 60) score += 2;
-	else if (width > 36) score += 1;
-	if (
-		config.durations.includes('eighth') ||
-		config.durations.includes('sixteenth')
-	)
-		score += 1;
-	if (config.keys.length >= 6) score += 1;
-	if (score <= 1) return m.difficultyBeginner();
-	if (score <= 3) return m.difficultyIntermediate();
-	return m.difficultyChallenge();
-});
 
 const summaryKeys = $derived(
 	config.keys.length > 0
@@ -77,10 +60,7 @@ const summaryAccidentals = $derived(
 <aside class="lg:sticky lg:top-20 lg:self-start">
 	<Card.Root>
 		<Card.Header class="pb-3">
-			<div class="flex items-center justify-between gap-2">
-				<Card.Title>{m.summaryTitle()}</Card.Title>
-				<Badge variant="secondary">{difficulty}</Badge>
-			</div>
+			<Card.Title>{m.summaryTitle()}</Card.Title>
 			<Card.Description>{m.summaryCheckBeforeStart()}</Card.Description>
 		</Card.Header>
 		<Card.Content>
