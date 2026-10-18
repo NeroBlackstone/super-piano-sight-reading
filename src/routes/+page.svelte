@@ -25,23 +25,24 @@ import {
 import * as Tooltip from '#lib/components/ui/tooltip/index.js';
 import { m } from '#lib/paraglide/messages.js';
 import { getLocale, locales, setLocale } from '#lib/paraglide/runtime.js';
+import {
+	createDefaultConfig,
+	type Duration,
+	KEYBOARD_MAX,
+	KEYBOARD_MIN,
+	type KeyId,
+	MEASURES_MAX,
+	MEASURES_MIN,
+	MEASURES_STEP,
+	type PracticeConfig,
+	TEMPO_MAX,
+	TEMPO_MIN,
+	type TimeSignature
+} from '#lib/practice/config.js';
 
 // —— 原型：仅用于展示交互状态，未接入任何练习逻辑 ——
-let clef = $state('treble');
-let keys = $state<string[]>(['C']);
-let range = $state<number[]>([48, 72]);
-let durations = $state<string[]>(['quarter']);
-let timeSignature = $state('4/4');
-let tempo = $state(72);
-let includeRests = $state(true);
-let restProbability = $state(0.15);
-let includeAccidentals = $state(false);
-let accidentalProbability = $state(0.1);
-let includeDots = $state(false);
-let dotsProbability = $state(0.15);
-let includeTriplets = $state(false);
-let tripletProbability = $state(0.1);
-let measuresPerExercise = $state(16);
+// 练习配置唯一真源，结构与默认值见 #lib/practice/config.js
+let config = $state<PracticeConfig>(createDefaultConfig());
 
 const NOTE_NAMES = [
 	'C',
@@ -66,7 +67,7 @@ const clefLabels: Record<string, () => string> = {
 	treble: () => m.clefTreble(),
 	bass: () => m.clefBass()
 };
-const keyOptions = [
+const keyOptions: { id: KeyId; label: string; hint: () => string }[] = [
 	{ id: 'C', label: 'C', hint: () => m.keysHintsC() },
 	{ id: 'G', label: 'G', hint: () => m.keysHintsG() },
 	{ id: 'D', label: 'D', hint: () => m.keysHintsD() },
@@ -83,7 +84,7 @@ const keyOptions = [
 const keyLabels: Record<string, string> = Object.fromEntries(
 	keyOptions.map((option) => [option.id, option.label])
 );
-const durationOptions = [
+const durationOptions: { id: Duration; label: () => string }[] = [
 	{ id: 'whole', label: () => m.durationsWhole() },
 	{ id: 'half', label: () => m.durationsHalf() },
 	{ id: 'quarter', label: () => m.durationsQuarter() },
@@ -93,7 +94,11 @@ const durationOptions = [
 const durationLabels: Record<string, () => string> = Object.fromEntries(
 	durationOptions.map((option) => [option.id, option.label])
 );
-const timeSignatureOptions = [
+const timeSignatureOptions: {
+	id: TimeSignature;
+	label: string;
+	hint: () => string;
+}[] = [
 	{ id: '4/4', label: '4/4', hint: () => m.timeSigHint44() },
 	{ id: '3/4', label: '3/4', hint: () => m.timeSigHint34() },
 	{ id: '2/4', label: '2/4', hint: () => m.timeSigHint24() },
@@ -102,9 +107,9 @@ const timeSignatureOptions = [
 const timeSignatureLabels: Record<string, string> = Object.fromEntries(
 	timeSignatureOptions.map((option) => [option.id, option.label])
 );
-// 钢琴键盘示意：A0 – C8（88 键完整音域）
-const KB_MIN = 21;
-const KB_MAX = 108;
+// 钢琴键盘示意：A0 – C8（88 键完整音域），边界取自配置常量
+const KB_MIN = KEYBOARD_MIN;
+const KB_MAX = KEYBOARD_MAX;
 const WHITE_PCS = [0, 2, 4, 5, 7, 9, 11];
 const BLACK_AFTER_PCS = [0, 2, 5, 7, 9];
 const whiteKeys = Array.from(
@@ -122,7 +127,8 @@ const blackKeys = whiteKeys
 		midi,
 		left: (index + 1) * whiteWidth - blackWidth / 2
 	}));
-const inRange = (midi: number) => midi >= range[0] && midi <= range[1];
+const inRange = (midi: number) =>
+	midi >= config.range[0] && midi <= config.range[1];
 
 const rangePresets = [
 	{ id: 'near', label: () => m.rangePresetNear(), value: [60, 72] },
@@ -131,11 +137,11 @@ const rangePresets = [
 	{ id: 'full', label: () => m.rangePresetFull(), value: [21, 108] }
 ];
 const applyPreset = (value: number[]) => {
-	range = [...value];
+	config.range = [...value];
 };
 
 // 拍号的分母决定默认时值单位：/4 拍默认四分，/8 拍默认八分
-const defaultUnitByDenominator: Record<string, string> = {
+const defaultUnitByDenominator: Record<string, Duration> = {
 	'4': 'quarter',
 	'8': 'eighth'
 };
@@ -145,12 +151,38 @@ const beatUnitMeta: Record<string, { glyph: string; name: () => string }> = {
 	quarter: { glyph: '♩', name: () => m.beatUnitQuarter() },
 	eighth: { glyph: '♪', name: () => m.beatUnitEighth() }
 };
-// 一拍单位对应的分母（与 timeSignature 初始值 4/4 的分母一致）
-let beatDen = $state('4');
+// 一拍单位对应的分母：直接由拍号推出，不再单独存一份
+const beatDen = $derived(config.timeSignature.split('/')[1]);
 const beatUnit = $derived(
 	beatUnitMeta[defaultUnitByDenominator[beatDen] ?? 'quarter'] ??
 		beatUnitMeta.quarter
 );
+
+// 拍号变化时：按分母重置默认时值（/4 拍 → 四分，/8 拍 → 八分），
+// 并等比换算 BPM 保持绝对速度不变；拍号必选 —— bits-ui 单选组再次点击
+// 会把值清空成 ''，这里直接驳回
+let prevTimeSignature: string = config.timeSignature;
+$effect.pre(() => {
+	const next: string = config.timeSignature;
+	if (next === prevTimeSignature) return;
+	if (next === '') {
+		config.timeSignature = prevTimeSignature as TimeSignature;
+		return;
+	}
+	const prevDen = prevTimeSignature.split('/')[1];
+	const den = next.split('/')[1];
+	const unit = defaultUnitByDenominator[den];
+	if (unit) config.durations = [unit];
+	// 一拍单位随分母变化时等比换算 BPM，保持绝对速度不变
+	const factor = Number(prevDen) / Number(den);
+	if (factor !== 1) {
+		config.tempo = Math.min(
+			TEMPO_MAX,
+			Math.max(TEMPO_MIN, Math.round(config.tempo * factor))
+		);
+	}
+	prevTimeSignature = next;
+});
 
 // BPM 对应的常见速度术语
 const TEMPO_MARKS = [
@@ -166,31 +198,36 @@ const tempoLabel = (bpm: number) =>
 
 const difficulty = $derived.by(() => {
 	let score = 0;
-	const width = range[1] - range[0];
+	const width = config.range[1] - config.range[0];
 	if (width > 60) score += 2;
 	else if (width > 36) score += 1;
-	if (durations.includes('eighth') || durations.includes('sixteenth'))
+	if (
+		config.durations.includes('eighth') ||
+		config.durations.includes('sixteenth')
+	)
 		score += 1;
-	if (keys.length >= 6) score += 1;
+	if (config.keys.length >= 6) score += 1;
 	if (score <= 1) return m.difficultyBeginner();
 	if (score <= 3) return m.difficultyIntermediate();
 	return m.difficultyChallenge();
 });
 
 const summaryKeys = $derived(
-	keys.length > 0
-		? keys.map((id) => keyLabels[id]).join(m.listJoiner())
+	config.keys.length > 0
+		? config.keys.map((id) => keyLabels[id]).join(m.listJoiner())
 		: m.keysNone()
 );
 const summaryDurations = $derived(
-	durations.length > 0
-		? durations.map((id) => durationLabels[id]?.() ?? id).join(m.listJoiner())
+	config.durations.length > 0
+		? config.durations
+				.map((id) => durationLabels[id]?.() ?? id)
+				.join(m.listJoiner())
 		: m.durationsNone()
 );
 const summaryAccidentals = $derived(
-	includeAccidentals
+	config.accidentals.enabled
 		? m.summaryAccidentalsOn({
-				percent: Math.round(accidentalProbability * 100)
+				percent: Math.round(config.accidentals.probability * 100)
 			})
 		: m.summaryAccidentalsOff()
 );
@@ -267,7 +304,7 @@ const summaryAccidentals = $derived(
 					<legend class="sr-only">{m.clefTitle()}</legend>
 					<ToggleGroup
 						type="single"
-						bind:value={clef}
+						bind:value={config.clef}
 						variant="outline"
 						spacing={3}
 						class="grid w-full grid-cols-1 gap-3 sm:grid-cols-2"
@@ -315,7 +352,7 @@ const summaryAccidentals = $derived(
 					<legend class="mb-2 text-sm font-medium">{m.keysTitle()}</legend>
 					<ToggleGroup
 						type="multiple"
-						bind:value={keys}
+						bind:value={config.keys}
 						variant="outline"
 						spacing={2}
 						class="flex w-full flex-wrap gap-2"
@@ -342,11 +379,11 @@ const summaryAccidentals = $derived(
 							</Tooltip.Root>
 						{/each}
 					</ToggleGroup>
-					{#if keys.length === 0}
+					{#if config.keys.length === 0}
 						<p class="mt-2 text-xs text-destructive">{m.keysRequired()}</p>
 					{:else}
 						<p class="mt-2 text-xs text-muted-foreground">
-							{m.keysSelected({ count: keys.length })}
+							{m.keysSelected({ count: config.keys.length })}
 						</p>
 					{/if}
 				</fieldset>
@@ -363,17 +400,17 @@ const summaryAccidentals = $derived(
 					<Switch
 						id="accidentals"
 						aria-describedby="accidentals-desc"
-						bind:checked={includeAccidentals}
+						bind:checked={config.accidentals.enabled}
 					/>
 				</div>
-				{#if includeAccidentals}
+				{#if config.accidentals.enabled}
 					<div class="mt-4 space-y-2">
 						<div class="flex items-center justify-between">
 							<span class="text-sm font-medium"
 								>{m.accidentalsProbability()}</span
 							>
 							<span class="text-sm tabular-nums text-muted-foreground"
-								>{Math.round(accidentalProbability * 100)}%</span
+								>{Math.round(config.accidentals.probability * 100)}%</span
 							>
 						</div>
 						<Slider
@@ -381,7 +418,7 @@ const summaryAccidentals = $derived(
 							min={0}
 							max={1}
 							step={0.05}
-							bind:value={accidentalProbability}
+							bind:value={config.accidentals.probability}
 							aria-label={m.accidentalsAria()}
 						/>
 						<p class="text-xs text-muted-foreground">
@@ -421,8 +458,8 @@ const summaryAccidentals = $derived(
 						class="relative h-28 select-none"
 						role="img"
 						aria-label={m.rangeKeyboardAria({
-							from: noteName(range[0]),
-							to: noteName(range[1])
+							from: noteName(config.range[0]),
+							to: noteName(config.range[1])
 						})}
 					>
 						{#each whiteKeys as midi, index (midi)}
@@ -463,13 +500,13 @@ const summaryAccidentals = $derived(
 					<div class="text-sm">
 						<span class="text-muted-foreground">{m.rangeLowest()}</span>
 						<span class="ml-1.5 font-semibold tabular-nums"
-							>{noteName(range[0])}</span
+							>{noteName(config.range[0])}</span
 						>
 					</div>
 					<div class="text-sm">
 						<span class="text-muted-foreground">{m.rangeHighest()}</span>
 						<span class="ml-1.5 font-semibold tabular-nums"
-							>{noteName(range[1])}</span
+							>{noteName(config.range[1])}</span
 						>
 					</div>
 				</div>
@@ -478,7 +515,7 @@ const summaryAccidentals = $derived(
 					min={KB_MIN}
 					max={KB_MAX}
 					step={1}
-					bind:value={range}
+					bind:value={config.range}
 					aria-label={m.rangeAria()}
 					class="mt-3"
 				/>
@@ -499,8 +536,8 @@ const summaryAccidentals = $derived(
 							variant="outline"
 							size="sm"
 							onclick={() => applyPreset(preset.value)}
-							class="rounded-full {range[0] === preset.value[0] &&
-							range[1] === preset.value[1]
+							class="rounded-full {config.range[0] === preset.value[0] &&
+							config.range[1] === preset.value[1]
 								? 'border-primary bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground'
 								: ''}"
 						>
@@ -525,20 +562,7 @@ const summaryAccidentals = $derived(
 					<legend class="mb-2 text-sm font-medium">{m.timeSigLegend()}</legend>
 					<ToggleGroup
 						type="single"
-						bind:value={timeSignature}
-						onValueChange={(next) => {
-							if (!next) return;
-							// 切换拍号时，按分母重置默认时值（/4 拍 → 四分，/8 拍 → 八分）
-							const nextDen = next.split('/')[1];
-							const unit = defaultUnitByDenominator[nextDen];
-							if (unit) durations = [unit];
-							// 一拍单位随分母变化时等比换算 BPM，保持绝对速度不变
-							const factor = Number(beatDen) / Number(nextDen);
-							if (factor !== 1) {
-								tempo = Math.min(208, Math.max(40, Math.round(tempo * factor)));
-							}
-							beatDen = nextDen;
-						}}
+						bind:value={config.timeSignature}
 						variant="outline"
 						spacing={2}
 						class="flex w-full flex-wrap gap-2"
@@ -569,20 +593,20 @@ const summaryAccidentals = $derived(
 					<div class="mb-2 flex items-baseline justify-between">
 						<legend class="text-sm font-medium">{m.tempoLegend()}</legend>
 						<span class="text-sm text-muted-foreground"
-							>{tempoLabel(tempo)}
+							>{tempoLabel(config.tempo)}
 							·
 							<span class="font-semibold tabular-nums text-foreground"
 								>{beatUnit.glyph}
-								= {tempo} BPM</span
+								= {config.tempo} BPM</span
 							></span
 						>
 					</div>
 					<Slider
 						type="single"
-						min={40}
-						max={208}
+						min={TEMPO_MIN}
+						max={TEMPO_MAX}
 						step={1}
-						bind:value={tempo}
+						bind:value={config.tempo}
 						aria-label={m.tempoAria({ glyph: beatUnit.glyph })}
 					/>
 					<div
@@ -600,7 +624,7 @@ const summaryAccidentals = $derived(
 					</legend>
 					<ToggleGroup
 						type="multiple"
-						bind:value={durations}
+						bind:value={config.durations}
 						variant="outline"
 						spacing={2}
 						class="flex w-full flex-wrap gap-2"
@@ -615,11 +639,11 @@ const summaryAccidentals = $derived(
 							</ToggleGroupItem>
 						{/each}
 					</ToggleGroup>
-					{#if durations.length === 0}
+					{#if config.durations.length === 0}
 						<p class="mt-2 text-xs text-destructive">{m.durationsRequired()}</p>
 					{:else}
 						<p class="mt-2 text-xs text-muted-foreground">
-							{m.durationsSelected({ count: durations.length })}
+							{m.durationsSelected({ count: config.durations.length })}
 						</p>
 					{/if}
 				</fieldset>
@@ -639,17 +663,17 @@ const summaryAccidentals = $derived(
 						<Switch
 							id="rests"
 							aria-describedby="rests-desc"
-							bind:checked={includeRests}
+							bind:checked={config.rests.enabled}
 						/>
 					</div>
-					{#if includeRests}
+					{#if config.rests.enabled}
 						<div class="space-y-2">
 							<div class="flex items-center justify-between">
 								<span class="text-sm font-medium"
 									>{m.rhythmRestsProbability()}</span
 								>
 								<span class="text-sm tabular-nums text-muted-foreground"
-									>{Math.round(restProbability * 100)}%</span
+									>{Math.round(config.rests.probability * 100)}%</span
 								>
 							</div>
 							<Slider
@@ -657,7 +681,7 @@ const summaryAccidentals = $derived(
 								min={0}
 								max={1}
 								step={0.05}
-								bind:value={restProbability}
+								bind:value={config.rests.probability}
 								aria-label={m.rhythmRestsAria()}
 							/>
 							<p class="text-xs text-muted-foreground">
@@ -680,17 +704,17 @@ const summaryAccidentals = $derived(
 						<Switch
 							id="dots"
 							aria-describedby="dots-desc"
-							bind:checked={includeDots}
+							bind:checked={config.dots.enabled}
 						/>
 					</div>
-					{#if includeDots}
+					{#if config.dots.enabled}
 						<div class="space-y-2">
 							<div class="flex items-center justify-between">
 								<span class="text-sm font-medium"
 									>{m.rhythmDotsProbability()}</span
 								>
 								<span class="text-sm tabular-nums text-muted-foreground"
-									>{Math.round(dotsProbability * 100)}%</span
+									>{Math.round(config.dots.probability * 100)}%</span
 								>
 							</div>
 							<Slider
@@ -698,7 +722,7 @@ const summaryAccidentals = $derived(
 								min={0}
 								max={1}
 								step={0.05}
-								bind:value={dotsProbability}
+								bind:value={config.dots.probability}
 								aria-label={m.rhythmDotsAria()}
 							/>
 							<p class="text-xs text-muted-foreground">
@@ -721,17 +745,17 @@ const summaryAccidentals = $derived(
 						<Switch
 							id="triplets"
 							aria-describedby="triplets-desc"
-							bind:checked={includeTriplets}
+							bind:checked={config.triplets.enabled}
 						/>
 					</div>
-					{#if includeTriplets}
+					{#if config.triplets.enabled}
 						<div class="space-y-2">
 							<div class="flex items-center justify-between">
 								<span class="text-sm font-medium"
 									>{m.rhythmTripletsProbability()}</span
 								>
 								<span class="text-sm tabular-nums text-muted-foreground"
-									>{Math.round(tripletProbability * 100)}%</span
+									>{Math.round(config.triplets.probability * 100)}%</span
 								>
 							</div>
 							<Slider
@@ -739,7 +763,7 @@ const summaryAccidentals = $derived(
 								min={0}
 								max={1}
 								step={0.05}
-								bind:value={tripletProbability}
+								bind:value={config.triplets.probability}
 								aria-label={m.rhythmTripletsAria()}
 							/>
 							<p class="text-xs text-muted-foreground">
@@ -765,15 +789,15 @@ const summaryAccidentals = $derived(
 					<div class="mb-2 flex items-baseline justify-between">
 						<span class="text-sm font-medium">{m.practiceMeasuresLabel()}</span>
 						<span class="text-sm font-semibold tabular-nums"
-							>{m.practiceMeasures({ count: measuresPerExercise })}</span
+							>{m.practiceMeasures({ count: config.measuresPerExercise })}</span
 						>
 					</div>
 					<Slider
 						type="single"
-						min={4}
-						max={32}
-						step={4}
-						bind:value={measuresPerExercise}
+						min={MEASURES_MIN}
+						max={MEASURES_MAX}
+						step={MEASURES_STEP}
+						bind:value={config.measuresPerExercise}
 						aria-label={m.practiceMeasuresLabel()}
 					/>
 					<div
@@ -798,25 +822,28 @@ const summaryAccidentals = $derived(
 			</Card.Header>
 			<Card.Content>
 				<div class="flex flex-col">
-					{@render summaryRow(m.summaryClef(), clefLabels[clef]?.() ?? '')}
+					{@render summaryRow(
+						m.summaryClef(),
+						clefLabels[config.clef]?.() ?? ''
+					)}
 					{@render summaryRow(m.summaryKeys(), summaryKeys)}
 					{@render summaryRow(
 						m.summaryRange(),
-						`${noteName(range[0])} – ${noteName(range[1])}`
+						`${noteName(config.range[0])} – ${noteName(config.range[1])}`
 					)}
 					{@render summaryRow(
 						m.summaryTimeSig(),
-						timeSignatureLabels[timeSignature]
+						timeSignatureLabels[config.timeSignature]
 					)}
 					{@render summaryRow(
 						m.summaryTempo(),
-						`${tempoLabel(tempo)} · ${beatUnit.glyph} = ${tempo} BPM`
+						`${tempoLabel(config.tempo)} · ${beatUnit.glyph} = ${config.tempo} BPM`
 					)}
 					{@render summaryRow(m.summaryDurations(), summaryDurations)}
 					{@render summaryRow(m.summaryAccidentals(), summaryAccidentals)}
 					{@render summaryRow(
 						m.summaryPerExercise(),
-						m.practiceMeasures({ count: measuresPerExercise })
+						m.practiceMeasures({ count: config.measuresPerExercise })
 					)}
 				</div>
 
@@ -826,7 +853,7 @@ const summaryAccidentals = $derived(
 					type="button"
 					size="lg"
 					class="w-full"
-					disabled={keys.length === 0 || durations.length === 0}
+					disabled={config.keys.length === 0 || config.durations.length === 0}
 				>
 					<Play class="size-4" />
 					{m.summaryStart()}
