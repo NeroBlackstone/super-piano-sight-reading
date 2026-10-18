@@ -1,7 +1,7 @@
 <script lang="ts">
 import { onMount } from 'svelte';
-import type { Beam, StaveNote, StemmableNote, Tuplet } from 'vexflow';
-import type { Clef, TimeSignature } from '#lib/practice/config.js';
+import type { EasyScore, StemmableNote, Voice } from 'vexflow';
+import type { TimeSignature } from '#lib/practice/config.js';
 import {
 	type Exercise,
 	type NoteEvent,
@@ -22,7 +22,10 @@ onMount(() => {
 		width = entries[0]?.contentRect.width ?? 0;
 	});
 	if (container) observer.observe(container);
-	import('vexflow').then((module) => {
+	import('vexflow').then(async (module) => {
+		// VexFlow 5 的符头是文字字形，符干的 X 坐标来自 canvas measureText 量出的字形宽度。
+		// 字体尚未就绪时量到的是回退字体的宽度，符干就会脱离符头；模块加载完并不等于字体加载完。
+		await document.fonts.ready;
 		vexflow = module;
 	});
 	return () => observer.disconnect();
@@ -81,20 +84,45 @@ function draw(
 ) {
 	container.innerHTML = '';
 	const rows = chunk(exercise.measures, measuresPerRow(width));
+	const height = rows.length * ROW_HEIGHT + 20;
 
 	const renderer = new vf.Renderer(container, vf.Renderer.Backends.SVG);
-	renderer.resize(width, rows.length * ROW_HEIGHT + 20);
-	const context = renderer.getContext();
+	renderer.resize(width, height);
 
-	const [numBeats, beatValue] = exercise.timeSignature.split('/').map(Number);
-	const beatUnits = beatUnitsFor(exercise.timeSignature);
+	// 高层 API：Factory 负责创建元素并统一 format / draw；容器没有固定 id，
+	// 所以不走 elementId 建渲染器，而是注入我们自己的 Renderer 上下文。
+	const factory = new vf.Factory({
+		renderer: { elementId: null, width, height }
+	});
+	factory.setContext(renderer.getContext());
+	const score = factory.EasyScore({ throwOnError: true });
+	score.set({
+		clef: exercise.clef,
+		time: exercise.timeSignature,
+		stem: 'auto'
+	});
 
 	rows.forEach((rowMeasures, rowIndex) => {
 		const y = rowIndex * ROW_HEIGHT + 20;
 		const staveWidth = (width - STAVE_MARGIN * 2) / rowMeasures.length;
 
-		const staves = rowMeasures.map((_, i) => {
-			const stave = new vf.Stave(STAVE_MARGIN + i * staveWidth, y, staveWidth);
+		rowMeasures.forEach((measure, i) => {
+			// 每个小节一个 System：宽度固定，小节内的排布由 System 自行完成，
+			// 首小节的谱号 / 调号 / 拍号占宽不会挤歪后面的音符。
+			const system = factory.System({
+				x: STAVE_MARGIN + i * staveWidth,
+				y,
+				width: staveWidth
+			});
+
+			const voice = buildVoice(vf, score, measure, exercise);
+			// 临时记号交给 VexFlow 决定：对照调号 + 小节内上下文，该画的画、重复的删
+			vf.Accidental.applyAccidentals([voice], exercise.key);
+
+			const stave = system.addStave({
+				voices: [voice],
+				options: { leftBar: true }
+			});
 			// 每行行首重复谱号；调号与拍号只在全曲开头
 			if (i === 0) {
 				stave.addClef(exercise.clef);
@@ -103,87 +131,78 @@ function draw(
 					stave.addTimeSignature(exercise.timeSignature);
 				}
 			}
-			stave.setEndBarType(vf.BarlineType.SINGLE);
-			return stave;
-		});
-		// 全曲最后一小节画终止线
-		if (rowIndex === rows.length - 1) {
-			staves[staves.length - 1].setEndBarType(vf.BarlineType.END);
-		}
-
-		for (const stave of staves) stave.setContext(context).draw();
-
-		// 逐小节构建音符、三连音与符杠，并各自成为一个 Voice。
-		// 必须逐小节 format/draw：整行合成一个 Voice 会把音符均匀铺满整行，
-		// 而首小节的谱号 / 调号 / 拍号占掉一段宽度，音符就不落在小节线上了。
-		rowMeasures.forEach((measure, i) => {
-			const stave = staves[i];
-			const measureNotes = measure.map((event) =>
-				buildNote(vf, event, exercise.clef)
-			);
-			// 生成器保证三连音是连续 3 个同质事件
-			const tuplets: Tuplet[] = [];
-			for (let j = 0; j + 2 < measure.length; j += 3) {
-				if (measure[j].triplet) {
-					tuplets.push(
-						new vf.Tuplet(measureNotes.slice(j, j + 3), {
-							numNotes: 3,
-							notesOccupied: 2
-						})
-					);
-				}
-			}
-			const beams = beamMeasure(vf, measure, measureNotes, beatUnits);
-
-			const voice = new vf.Voice({ numBeats, beatValue });
-			voice.addTickables(measureNotes);
-			// Stave 没有 getNoteWidth，用音符区的起止 X 相减
-			const noteWidth = stave.getNoteEndX() - stave.getNoteStartX();
-			new vf.Formatter().joinVoices([voice]).format([voice], noteWidth);
-
-			voice.draw(context, stave);
-			for (const beam of beams) beam.setContext(context).draw();
-			for (const tuplet of tuplets) tuplet.setContext(context).draw();
+			// 全曲最后一小节画终止线
+			const isLast =
+				rowIndex === rows.length - 1 && i === rowMeasures.length - 1;
+			stave.setEndBarType(isLast ? vf.BarlineType.END : vf.BarlineType.SINGLE);
 		});
 	});
+
+	factory.draw();
 }
 
-function buildNote(
+/** 一个小节转成 EasyScore 源码串：真实音高 + 时值 + 休止 / 附点 */
+function toEasyScoreLine(measure: NoteEvent[]): string {
+	return measure
+		.map((event) => {
+			// vexKey 形如 'c#/4'，EasyScore 要求 'c#4'；
+			// 升降号是否显示不由字符串决定，统一交给 applyAccidentals
+			const key = event.vexKey.replace('/', '');
+			const duration = DURATION_CODES[event.duration];
+			const rest = event.midi === null ? '/r' : '';
+			const dots = event.dots ? '.' : '';
+			return `${key}/${duration}${rest}${dots}`;
+		})
+		.join(', ');
+}
+
+function buildVoice(
 	vf: VexFlowModule,
-	event: NoteEvent,
-	clef: Clef
-): StemmableNote {
-	const note: StaveNote = new vf.StaveNote({
-		keys: [event.vexKey],
-		duration: DURATION_CODES[event.duration] + (event.midi === null ? 'r' : ''),
-		clef,
-		autoStem: true
-	});
-	if (event.dots) vf.Dot.buildAndAttach([note], { all: true });
-	if (event.accidental) {
-		note.addModifier(new vf.Accidental(event.accidental), 0);
+	score: EasyScore,
+	measure: NoteEvent[],
+	exercise: Exercise
+): Voice {
+	const notes = score.notes(toEasyScoreLine(measure));
+
+	// 生成器保证三连音是连续 3 个同质事件；
+	// 用 triplet 的起始边沿定位组首（前一个事件非三连音，或已在小节开头）
+	for (let j = 0; j < measure.length; j++) {
+		const startsTriplet =
+			measure[j].triplet && (j === 0 || !measure[j - 1].triplet);
+		if (startsTriplet) {
+			score.tuplet(notes.slice(j, j + 3), {
+				numNotes: 3,
+				notesOccupied: 2
+			});
+		}
 	}
-	return note;
+
+	const beatUnits = beatUnitsFor(exercise.timeSignature);
+	for (const run of beamRuns(measure, notes, beatUnits)) {
+		score.beam(run);
+	}
+
+	return score.voice(notes);
 }
 
 /**
- * 手动符杠：把同一拍内连续的八分 / 十六分音符（非休止、非附点）连成一组；
+ * 手动符杠分组：把同一拍内连续的八分 / 十六分音符（非休止、非附点）连成一组；
  * 休止符、附点音符、跨拍处、三连音与非三连音之间都断开。
+ * EasyScore 的 beam() 不懂拍界规则，分组判断必须自己做。
  */
-function beamMeasure(
-	vf: VexFlowModule,
+function beamRuns(
 	measure: NoteEvent[],
 	notes: StemmableNote[],
 	beatUnits: number
-): Beam[] {
-	const beams: Beam[] = [];
+): StemmableNote[][] {
+	const runs: StemmableNote[][] = [];
 	let run: StemmableNote[] = [];
 	let runTriplet = false;
 	let runStart = 0;
 	let start = 0;
 
 	const flush = () => {
-		if (run.length > 1) beams.push(new vf.Beam(run));
+		if (run.length > 1) runs.push(run);
 		run = [];
 	};
 
@@ -214,7 +233,7 @@ function beamMeasure(
 		start += cost;
 	}
 	flush();
-	return beams;
+	return runs;
 }
 </script>
 

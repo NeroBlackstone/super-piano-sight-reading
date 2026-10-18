@@ -89,6 +89,40 @@ const KEY_ALTERATIONS: Record<KeyId, Record<string, number>> = {
 /** 以降号为主的调：等音拼写平票时偏好降拼写 */
 const FLAT_KEYS: ReadonlySet<KeyId> = new Set(['F', 'Bb', 'Eb', 'Ab']);
 
+/** 各调根音在 LETTERS 中的下标 */
+const KEY_ROOT_INDEX: Record<KeyId, number> = {
+	C: 0,
+	G: 4,
+	D: 2,
+	A: 5,
+	E: 3,
+	B: 6,
+	'F#': 3,
+	'C#': 0,
+	F: 3,
+	Bb: 6,
+	Eb: 3,
+	Ab: 5
+};
+
+/** 调式 7 个音级（字母 + 相对本位音级的升降 + 半音数），顺序从根音起 */
+function scaleDegrees(key: KeyId): {
+	letterIndex: number;
+	alteration: number;
+	pc: number;
+}[] {
+	const rootIndex = KEY_ROOT_INDEX[key];
+	const degrees = [];
+	for (let i = 0; i < 7; i++) {
+		const letterIndex = (rootIndex + i) % 7;
+		const letter = LETTERS[letterIndex];
+		const alteration = KEY_ALTERATIONS[key][letter] ?? 0;
+		const pc = (((NATURAL_PC[letterIndex] + alteration) % 12) + 12) % 12;
+		degrees.push({ letterIndex, alteration, pc });
+	}
+	return degrees;
+}
+
 /** 相对本位音级的升降 → VexFlow 音名后缀 */
 const ACC_SUFFIX: Record<number, string> = {
 	'-2': 'bb',
@@ -144,7 +178,7 @@ const REST_KEYS: Record<Clef, string> = {
 	bass: 'd/3'
 };
 
-/** 随机取一个音（含临时变音记号特性），并按调号拼写 */
+/** 随机取一个调内音（临时变音记号特性照常叠加在调内音上） */
 function randomNoteEvent(
 	config: PracticeConfig,
 	key: KeyId,
@@ -155,22 +189,57 @@ function randomNoteEvent(
 ): NoteEvent {
 	const low = config.range[0];
 	const high = config.range[1];
-	let midi = low + Math.floor(rng() * (high - low + 1));
-	const spelling = spell(midi, key);
-	let vexKey = `${spelling.letter}${ACC_SUFFIX[spelling.accidental]}/${spelling.octave}`;
+	const degrees = scaleDegrees(key);
+
+	// 音高池只含调内音级：随机抽到的音一定在调号内，关闭临时记号时谱面无意外升降号
+	const pcs = new Set(degrees.map((d) => d.pc));
+	const pool: number[] = [];
+	for (let m = low; m <= high; m++) {
+		if (pcs.has(((m % 12) + 12) % 12)) pool.push(m);
+	}
+
+	let midi: number;
+	/** 音名字母 */
+	let letter: string;
+	/** 写进 vexKey 的升降（音级自带的调号升降） */
+	let acc: number;
+	/** 该字母在调号里的升降（临时记号玩法用） */
+	let keyAlt: number;
+	let naturalPc: number;
+	let octave: number;
+
+	if (pool.length > 0) {
+		midi = pick(pool, rng);
+		const pc = ((midi % 12) + 12) % 12;
+		const degree = degrees.find((d) => d.pc === pc) as (typeof degrees)[number];
+		letter = LETTERS[degree.letterIndex];
+		naturalPc = NATURAL_PC[degree.letterIndex];
+		acc = keyAlt = degree.alteration;
+		octave = Math.floor((midi - naturalPc - acc) / 12) - 1;
+	} else {
+		// 防御：音域退化（如 [63,63] 全是调外音）时退回半音随机
+		midi = low + Math.floor(rng() * (high - low + 1));
+		const spelling = spell(midi, key);
+		letter = spelling.letter;
+		naturalPc = spelling.naturalPc;
+		acc = spelling.accidental;
+		keyAlt = KEY_ALTERATIONS[key][letter] ?? 0;
+		octave = spelling.octave;
+	}
+
+	let vexKey = `${letter}${ACC_SUFFIX[acc]}/${octave}`;
 	let accidental: NoteEvent['accidental'] = null;
 
 	if (config.accidentals.enabled && rng() < config.accidentals.probability) {
 		// 调号内升降的字母：还原或反向变化；本位字母：升或降。
 		// 避免重升/重降这类生僻写法。
-		const keyAlt = KEY_ALTERATIONS[key][spelling.letter] ?? 0;
 		const target =
 			keyAlt !== 0 ? (rng() < 0.6 ? 0 : -keyAlt) : rng() < 0.5 ? 1 : -1;
-		const candidate = 12 * (spelling.octave + 1) + spelling.naturalPc + target;
+		const candidate = 12 * (octave + 1) + naturalPc + target;
 		if (candidate >= low && candidate <= high) {
 			midi = candidate;
 			accidental = target === 0 ? 'n' : target > 0 ? '#' : 'b';
-			vexKey = `${spelling.letter}${target === 0 ? '' : target > 0 ? '#' : 'b'}/${spelling.octave}`;
+			vexKey = `${letter}${target === 0 ? '' : target > 0 ? '#' : 'b'}/${octave}`;
 		}
 	}
 
