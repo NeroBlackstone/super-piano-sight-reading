@@ -5,6 +5,7 @@
  * 谱面渲染由 #lib/components/practice/staff.svelte（VexFlow）完成。
  */
 import type {
+	ChordTypeId,
 	Clef,
 	Duration,
 	KeyId,
@@ -67,6 +68,8 @@ interface SpelledPitch {
 	midi: number;
 	vexKey: string;
 	accidental: NoteEvent['accidental'];
+	/** 仅顺阶分解和弦的和弦首音携带（渲染层据此在谱表上方标注和弦代号） */
+	chordSymbol?: string;
 }
 
 /** 单个音符的取音来源：随机模式与音程模式各有一个实现 */
@@ -195,6 +198,13 @@ function makeIntervalSource(
 	};
 }
 
+/** 顺阶三和弦类型 → 和弦代号后缀（大调顺阶只有大 / 小 / 减三种） */
+const DIATONIC_TRIAD_SUFFIX: Partial<Record<ChordTypeId, string>> = {
+	major: '',
+	minor: 'm',
+	diminished: 'dim'
+};
+
 /**
  * 分解和弦模式：每次连续取音构成一个完整和弦（自低音起逐音输出，跨小节延续）。
  * 顺阶来源：用调内各级三和弦，类型由调号决定，音级 × 转位在放得下的组合里随机；
@@ -262,7 +272,8 @@ function makeChordSource(
 			return [randomChromaticNote()];
 		}
 		const { degree, inversion } = pick(options, rng);
-		const structure = CHORD_STRUCTURES[diatonicTriadType(key, degree)];
+		const type = diatonicTriadType(key, degree);
+		const structure = CHORD_STRUCTURES[type];
 		const { bassOffset, topOffset } = chordSpan(structure, inversion);
 		const roots = pool.filter(
 			(midi) =>
@@ -270,12 +281,17 @@ function makeChordSource(
 				midi + bassOffset >= low &&
 				midi + topOffset <= high
 		);
-		return buildChord(
+		const pitches = buildChord(
 			pick(roots, rng),
 			degrees[degree].letterIndex,
 			structure,
 			inversion
 		);
+		// 和弦代号标在第一个发音的音上（上行 = 和弦低音，下行 = 和弦高音）；
+		// 根音拼写沿用调号音级（字母 + 升降），如 F 大调第 4 级 → 'Bb'
+		const rootDegree = degrees[degree];
+		pitches[0].chordSymbol = `${LETTERS[rootDegree.letterIndex].toUpperCase()}${ACC_SUFFIX[rootDegree.alteration]}${DIATONIC_TRIAD_SUFFIX[type] ?? ''}`;
+		return pitches;
 	}
 
 	/** 自定义：类型与转位在所选集合内随机，根音在调内音池中随机 */
@@ -357,8 +373,8 @@ function makeEvent(
 			triplet
 		};
 	}
-	const { midi, vexKey, accidental } = nextPitch();
-	return { midi, vexKey, accidental, duration, dots, triplet };
+	const { midi, vexKey, accidental, chordSymbol } = nextPitch();
+	return { midi, vexKey, accidental, duration, dots, triplet, chordSymbol };
 }
 
 /** 剩余时值放不下任何可选时值时，用休止符按二进制拆分补齐 */
@@ -475,12 +491,12 @@ function fillMeasure(
 	return events;
 }
 
-/** 按配置生成一道完整题目（调号在多选中随机抽一个） */
+/** 按配置生成一道完整题目 */
 export function generateExercise(
 	config: PracticeConfig,
 	rng: () => number
 ): Exercise {
-	const key = pick(config.keys, rng);
+	const key = config.key;
 	// 取音来源跨小节持有：音程模式的"上一个音"锚点贯穿整题
 	const nextPitch = makePitchSource(config, key, rng);
 	const measures: NoteEvent[][] = [];

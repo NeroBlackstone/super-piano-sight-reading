@@ -5,6 +5,7 @@
  * 配置页点"开始练习"时保存，练习页挂载时读取。
  */
 import type { PracticeConfig } from './config.js';
+import { keyOptions } from './options.js';
 
 const STORAGE_KEY = 'spsr:practice-config';
 
@@ -33,8 +34,7 @@ export function loadPracticeConfig(): PracticeConfig | null {
 /** 轻量结构校验：字段缺失或形状不符（含旧版结构，如附点曾是 enabled 开关）即无效 */
 function isValidShape(parsed: PracticeConfig): boolean {
 	return (
-		Array.isArray(parsed.keys) &&
-		parsed.keys.length > 0 &&
+		keyOptions.some((option) => option.id === parsed.key) &&
 		Array.isArray(parsed.durations) &&
 		parsed.durations.length > 0 &&
 		Array.isArray(parsed.range) &&

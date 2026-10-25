@@ -1,6 +1,7 @@
 <script lang="ts">
 import { AudioWaveform } from '@lucide/svelte';
 import * as Card from '#lib/components/ui/card/index.js';
+import { Checkbox } from '#lib/components/ui/checkbox/index.js';
 import {
 	ToggleGroup,
 	ToggleGroupItem
@@ -39,8 +40,10 @@ function changeMode(value: string) {
 	}
 }
 
-function changeIntervals(value: string[]) {
-	config.melody.intervals = value.map(Number);
+function toggleInterval(interval: number, checked: boolean) {
+	config.melody.intervals = checked
+		? [...config.melody.intervals, interval]
+		: config.melody.intervals.filter((i) => i !== interval);
 }
 
 function changeChordSource(value: string) {
@@ -55,14 +58,11 @@ function changeChordSource(value: string) {
 	}
 }
 
-// 三和弦 / 七和弦两组开关共用 types 数组：改一组时保留另一组的已选项
-function changeChordTypes(group: ChordTypeId[], value: string[]) {
-	const picked = new Set(value);
-	const kept = config.melody.chord.types.filter((id) => !group.includes(id));
-	config.melody.chord.types = [
-		...kept,
-		...value.map((id) => id as ChordTypeId)
-	];
+// 三和弦 / 七和弦两组勾选框共用 types 数组：单个勾选框增删对应类型
+function toggleChordType(type: ChordTypeId, checked: boolean) {
+	config.melody.chord.types = checked
+		? [...config.melody.chord.types, type]
+		: config.melody.chord.types.filter((id) => id !== type);
 	// 只剩三和弦时第三转位无意义，自动移除
 	if (!config.melody.chord.types.some((id) => SEVENTH_CHORD_TYPES.has(id))) {
 		config.melody.chord.inversions = config.melody.chord.inversions.filter(
@@ -71,8 +71,10 @@ function changeChordTypes(group: ChordTypeId[], value: string[]) {
 	}
 }
 
-function changeInversions(value: string[]) {
-	config.melody.chord.inversions = value.map(Number) as ChordInversion[];
+function toggleInversion(inversion: ChordInversion, checked: boolean) {
+	config.melody.chord.inversions = checked
+		? [...config.melody.chord.inversions, inversion]
+		: config.melody.chord.inversions.filter((i) => i !== inversion);
 }
 
 function changeDirection(value: string) {
@@ -81,20 +83,17 @@ function changeDirection(value: string) {
 	}
 }
 
-// 所选最大音程在任何一个已选调里都放不下时提示（生成端此时保持同音）
+// 所选最大音程在所选调里放不下时提示（生成端此时保持同音）
 const rangeTooNarrow = $derived.by(() => {
 	if (
 		config.melody.mode !== 'interval' ||
-		config.melody.intervals.length === 0 ||
-		config.keys.length === 0
+		config.melody.intervals.length === 0
 	) {
 		return false;
 	}
 	const steps = Math.max(...config.melody.intervals) - 1;
 	// 池内下标差 steps 仍留在池内：至少要有 steps + 1 个调内音
-	return config.keys.every(
-		(key) => diatonicPool(config.range, key).length <= steps
-	);
+	return diatonicPool(config.range, config.key).length <= steps;
 });
 
 // 自定义来源下已选七和弦类型：第三转位只对七和弦开放（顺阶只有三和弦）
@@ -103,37 +102,36 @@ const hasSeventhType = $derived(
 		config.melody.chord.types.some((id) => SEVENTH_CHORD_TYPES.has(id))
 );
 
-// 所选和弦在任何一个已选调里都放不下时提示（顺阶看各级三和弦，自定义看所选类型）
+// 所选和弦在所选调里放不下时提示（顺阶看各级三和弦，自定义看所选类型）
 const chordRangeTooNarrow = $derived.by(() => {
 	if (
 		config.melody.mode !== 'chord' ||
-		config.melody.chord.inversions.length === 0 ||
-		config.keys.length === 0
+		config.melody.chord.inversions.length === 0
 	) {
 		return false;
 	}
 	if (config.melody.chord.source === 'diatonic') {
-		return config.keys.every(
-			(key) =>
-				diatonicChordOptions(config.range, key, config.melody.chord.inversions)
-					.length === 0
+		return (
+			diatonicChordOptions(
+				config.range,
+				config.key,
+				config.melody.chord.inversions
+			).length === 0
 		);
 	}
 	if (config.melody.chord.types.length === 0) {
 		return false;
 	}
-	return config.keys.every((key) =>
-		config.melody.chord.types.every((type) => {
-			const structure = CHORD_STRUCTURES[type];
-			const usable = config.melody.chord.inversions.filter(
-				(i) => i < structure.length
-			);
-			const inversions = usable.length > 0 ? usable : [0];
-			return inversions.every(
-				(inversion) => !chordFitsPool(config.range, key, type, inversion)
-			);
-		})
-	);
+	return config.melody.chord.types.every((type) => {
+		const structure = CHORD_STRUCTURES[type];
+		const usable = config.melody.chord.inversions.filter(
+			(i) => i < structure.length
+		);
+		const inversions = usable.length > 0 ? usable : [0];
+		return inversions.every(
+			(inversion) => !chordFitsPool(config.range, config.key, type, inversion)
+		);
+	});
 });
 </script>
 
@@ -185,24 +183,22 @@ const chordRangeTooNarrow = $derived.by(() => {
 				<legend class="mb-2 text-sm font-medium">
 					{m.melodyIntervalsLegend()}
 				</legend>
-				<ToggleGroup
-					type="multiple"
-					value={config.melody.intervals.map(String)}
-					onValueChange={changeIntervals}
-					variant="outline"
-					spacing={2}
-					class="flex w-full flex-wrap gap-2"
-				>
+				<div class="flex w-full flex-wrap items-center gap-x-5 gap-y-2">
 					{#each intervalOptions as option (option.id)}
-						<ToggleGroupItem
-							value={String(option.id)}
-							size="sm"
-							class="h-9 rounded-full px-3.5 data-[state=on]:border-primary! data-[state=on]:bg-primary! data-[state=on]:text-primary-foreground!"
+						<label
+							for="interval-{option.id}"
+							class="flex cursor-pointer items-center gap-2 text-sm"
 						>
+							<Checkbox
+								id="interval-{option.id}"
+								checked={config.melody.intervals.includes(option.id)}
+								onCheckedChange={(checked) =>
+									toggleInterval(option.id, checked === true)}
+							/>
 							{option.label()}
-						</ToggleGroupItem>
+						</label>
 					{/each}
-				</ToggleGroup>
+				</div>
 				{#if config.melody.intervals.length === 0}
 					<p class="mt-2 text-xs text-destructive">
 						{m.melodyIntervalsRequired()}
@@ -250,59 +246,43 @@ const chordRangeTooNarrow = $derived.by(() => {
 					<legend class="mb-2 text-sm font-medium">
 						{m.chordTriadsLegend()}
 					</legend>
-					<ToggleGroup
-						type="multiple"
-						value={config.melody.chord.types.filter((id) =>
-							triadTypeOptions.some((option) => option.id === id)
-						)}
-						onValueChange={(value) =>
-							changeChordTypes(
-								triadTypeOptions.map((option) => option.id),
-								value
-							)}
-						variant="outline"
-						spacing={2}
-						class="flex w-full flex-wrap gap-2"
-					>
+					<div class="flex w-full flex-wrap items-center gap-x-5 gap-y-2">
 						{#each triadTypeOptions as option (option.id)}
-							<ToggleGroupItem
-								value={option.id}
-								size="sm"
-								class="h-9 rounded-full px-3.5 data-[state=on]:border-primary! data-[state=on]:bg-primary! data-[state=on]:text-primary-foreground!"
+							<label
+								for="chord-type-{option.id}"
+								class="flex cursor-pointer items-center gap-2 text-sm"
 							>
+								<Checkbox
+									id="chord-type-{option.id}"
+									checked={config.melody.chord.types.includes(option.id)}
+									onCheckedChange={(checked) =>
+										toggleChordType(option.id, checked === true)}
+								/>
 								{option.label()}
-							</ToggleGroupItem>
+							</label>
 						{/each}
-					</ToggleGroup>
+					</div>
 				</fieldset>
 				<fieldset>
 					<legend class="mb-2 text-sm font-medium">
 						{m.chordSeventhsLegend()}
 					</legend>
-					<ToggleGroup
-						type="multiple"
-						value={config.melody.chord.types.filter((id) =>
-							SEVENTH_CHORD_TYPES.has(id)
-						)}
-						onValueChange={(value) =>
-							changeChordTypes(
-								seventhTypeOptions.map((option) => option.id),
-								value
-							)}
-						variant="outline"
-						spacing={2}
-						class="flex w-full flex-wrap gap-2"
-					>
+					<div class="flex w-full flex-wrap items-center gap-x-5 gap-y-2">
 						{#each seventhTypeOptions as option (option.id)}
-							<ToggleGroupItem
-								value={option.id}
-								size="sm"
-								class="h-9 rounded-full px-3.5 data-[state=on]:border-primary! data-[state=on]:bg-primary! data-[state=on]:text-primary-foreground!"
+							<label
+								for="chord-type-{option.id}"
+								class="flex cursor-pointer items-center gap-2 text-sm"
 							>
+								<Checkbox
+									id="chord-type-{option.id}"
+									checked={config.melody.chord.types.includes(option.id)}
+									onCheckedChange={(checked) =>
+										toggleChordType(option.id, checked === true)}
+								/>
 								{option.label()}
-							</ToggleGroupItem>
+							</label>
 						{/each}
-					</ToggleGroup>
+					</div>
 					{#if config.melody.chord.types.length === 0}
 						<p class="mt-2 text-xs text-destructive">
 							{m.melodyChordTypesRequired()}
@@ -318,25 +298,26 @@ const chordRangeTooNarrow = $derived.by(() => {
 				<legend class="mb-2 text-sm font-medium">
 					{m.chordInversionsLegend()}
 				</legend>
-				<ToggleGroup
-					type="multiple"
-					value={config.melody.chord.inversions.map(String)}
-					onValueChange={changeInversions}
-					variant="outline"
-					spacing={2}
-					class="flex w-full flex-wrap gap-2"
-				>
+				<div class="flex w-full flex-wrap items-center gap-x-5 gap-y-2">
 					{#each chordInversionOptions as option (option.id)}
-						<ToggleGroupItem
-							value={String(option.id)}
-							size="sm"
-							disabled={option.seventhOnly && !hasSeventhType}
-							class="h-9 rounded-full px-3.5 data-[state=on]:border-primary! data-[state=on]:bg-primary! data-[state=on]:text-primary-foreground!"
+						<label
+							for="chord-inversion-{option.id}"
+							class="flex items-center gap-2 text-sm{option.seventhOnly &&
+							!hasSeventhType
+								? ' cursor-not-allowed opacity-50'
+								: ' cursor-pointer'}"
 						>
+							<Checkbox
+								id="chord-inversion-{option.id}"
+								checked={config.melody.chord.inversions.includes(option.id)}
+								disabled={option.seventhOnly && !hasSeventhType}
+								onCheckedChange={(checked) =>
+									toggleInversion(option.id, checked === true)}
+							/>
 							{option.label()}
-						</ToggleGroupItem>
+						</label>
 					{/each}
-				</ToggleGroup>
+				</div>
 				{#if config.melody.chord.inversions.length === 0}
 					<p class="mt-2 text-xs text-destructive">
 						{m.melodyChordInversionsRequired()}

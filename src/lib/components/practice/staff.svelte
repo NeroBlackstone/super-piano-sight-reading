@@ -60,6 +60,12 @@ const DURATION_CODES: Record<string, string> = {
 const STAVE_MARGIN = 12;
 /** 每行（谱表系统）占的像素高度 */
 const ROW_HEIGHT = 140;
+/** 谱表上方的和弦代号（顺阶分解和弦模式）需要额外的垂直空间 */
+const SYMBOL_ROW_HEIGHT = 170;
+/** 首行谱表上方预留的空白 */
+const TOP_MARGIN = 20;
+/** 有和弦代号时首行上方预留的空白（代号在顶线上方最多约 30px） */
+const SYMBOL_TOP_MARGIN = 44;
 /** 小节的最小宽度（px）：不超过基准事件数的小节就占这么宽 */
 const MIN_MEASURE_WIDTH = 300;
 /** 小节宽度的基准事件数：8 个音符（含休止符）的小节占最小宽度 */
@@ -180,9 +186,15 @@ function draw(
 		notatedEvents(measure, exercise)
 	);
 	const courtesy = courtesyAccidentals(notated, exercise.key);
+	// 和弦代号（顺阶分解和弦）在谱表上方占一行文字，需要更大的行距与顶部空白
+	const hasChordSymbols = notated.some((measure) =>
+		measure.some((event) => event.chordSymbol !== undefined)
+	);
+	const rowHeight = hasChordSymbols ? SYMBOL_ROW_HEIGHT : ROW_HEIGHT;
+	const topMargin = hasChordSymbols ? SYMBOL_TOP_MARGIN : TOP_MARGIN;
 	const available = width - STAVE_MARGIN * 2;
 	const rows = layoutRows(notated, available);
-	const height = rows.length * ROW_HEIGHT + 20;
+	const height = rows.length * rowHeight + topMargin;
 
 	const renderer = new vf.Renderer(container, vf.Renderer.Backends.SVG);
 	renderer.resize(width, height);
@@ -202,7 +214,7 @@ function draw(
 
 	let measureIndex = 0;
 	rows.forEach((rowEvents, rowIndex) => {
-		const y = rowIndex * ROW_HEIGHT + 20;
+		const y = rowIndex * rowHeight + topMargin;
 		// 末行不两端对齐，按期望宽度排（小节独占一行且超宽时收缩到行宽）；
 		// 其余行按期望宽度等比放大铺满整行——铺满只会变宽，最小宽度仍有保证
 		const desiredSum = rowEvents.reduce(
@@ -226,7 +238,7 @@ function draw(
 			});
 			x += staveWidth;
 
-			const voice = buildVoice(factory, score, events, exercise);
+			const voice = buildVoice(vf, factory, score, events, exercise);
 			// 临时记号交给 VexFlow 决定：对照调号 + 小节内上下文，该画的画、重复的删
 			vf.Accidental.applyAccidentals([voice], exercise.key);
 			// 跨小节提醒记号在其后叠加：先加会被 applyAccidentals 当重复记号删掉
@@ -292,12 +304,27 @@ function notatedEvents(measure: NoteEvent[], exercise: Exercise): NoteEvent[] {
 }
 
 function buildVoice(
+	vf: VexFlowModule,
 	factory: Factory,
 	score: EasyScore,
 	events: NoteEvent[],
 	exercise: Exercise
 ): Voice {
 	const notes = score.notes(toEasyScoreLine(events));
+
+	// 和弦代号（顺阶分解和弦）：画在该和弦第一个音的谱表上方；
+	// 首音被记谱层拆成连音链时只画在第一段（后续段由 tieToNext 与前段相连）
+	for (let j = 0; j < events.length; j++) {
+		const symbol = events[j].chordSymbol;
+		if (symbol === undefined || (j > 0 && events[j - 1].tieToNext)) continue;
+		notes[j].addModifier(
+			new vf.ChordSymbol()
+				.addText(symbol)
+				.setFont('Arial', 12, 'bold')
+				.setHorizontal(vf.ChordSymbol.HorizontalJustify.CENTER),
+			0
+		);
+	}
 
 	// 生成器保证三连音是连续 3 个同质事件；
 	// 用 triplet 的起始边沿定位组首（前一个事件非三连音，或已在小节开头）

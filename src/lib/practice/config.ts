@@ -91,8 +91,8 @@ export interface DotSettings {
 
 export interface PracticeConfig {
 	clef: Clef;
-	/** 调号多选，至少 1 个 */
-	keys: KeyId[];
+	/** 调号 */
+	key: KeyId;
 	/** 音域 [低音, 高音]，MIDI 音高（长度 2，low < high） */
 	range: number[];
 	/** 旋律进行方式 */
@@ -133,7 +133,7 @@ export const MEASURES_STEP = 4;
 export function createDefaultConfig(): PracticeConfig {
 	return {
 		clef: 'treble',
-		keys: ['C'],
+		key: 'C',
 		range: [48, 72],
 		melody: {
 			mode: 'random',

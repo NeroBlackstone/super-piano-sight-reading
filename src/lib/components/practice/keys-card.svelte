@@ -8,10 +8,17 @@ import {
 } from '#lib/components/ui/toggle-group/index.js';
 import * as Tooltip from '#lib/components/ui/tooltip/index.js';
 import { m } from '#lib/paraglide/messages.js';
-import type { PracticeConfig } from '#lib/practice/config.js';
+import type { KeyId, PracticeConfig } from '#lib/practice/config.js';
 import { keyOptions } from '#lib/practice/options.js';
 
 let { config }: { config: PracticeConfig } = $props();
+
+// bits-ui 单选组再次点击会把值清空成 ''，这里直接驳回，调号必选
+function changeKey(value: string) {
+	if (keyOptions.some((option) => option.id === value)) {
+		config.key = value as KeyId;
+	}
+}
 </script>
 
 <Card.Root>
@@ -26,8 +33,9 @@ let { config }: { config: PracticeConfig } = $props();
 		<fieldset>
 			<legend class="mb-2 text-sm font-medium">{m.keysTitle()}</legend>
 			<ToggleGroup
-				type="multiple"
-				bind:value={config.keys}
+				type="single"
+				value={config.key}
+				onValueChange={changeKey}
 				variant="outline"
 				spacing={2}
 				class="flex w-full flex-wrap gap-2"
@@ -52,13 +60,6 @@ let { config }: { config: PracticeConfig } = $props();
 					</Tooltip.Root>
 				{/each}
 			</ToggleGroup>
-			{#if config.keys.length === 0}
-				<p class="mt-2 text-xs text-destructive">{m.keysRequired()}</p>
-			{:else}
-				<p class="mt-2 text-xs text-muted-foreground">
-					{m.keysSelected({ count: config.keys.length })}
-				</p>
-			{/if}
 		</fieldset>
 
 		<div class="mt-1">

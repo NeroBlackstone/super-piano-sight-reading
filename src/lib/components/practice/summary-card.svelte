@@ -32,11 +32,7 @@ function startPractice() {
 
 const beatUnit = $derived(beatUnitFor(config.timeSignature));
 
-const summaryKeys = $derived(
-	config.keys.length > 0
-		? config.keys.map((id) => keyLabels[id]).join(m.listJoiner())
-		: m.keysNone()
-);
+const summaryKeys = $derived(keyLabels[config.key] ?? config.key);
 const summaryDurations = $derived(
 	config.durations.length > 0
 		? config.durations
@@ -131,8 +127,7 @@ const summaryMelody = $derived.by(() => {
 				type="button"
 				size="lg"
 				class="w-full"
-				disabled={config.keys.length === 0 ||
-					config.durations.length === 0 ||
+				disabled={config.durations.length === 0 ||
 					(config.melody.mode === 'interval' &&
 						config.melody.intervals.length === 0) ||
 					(config.melody.mode === 'chord' &&
