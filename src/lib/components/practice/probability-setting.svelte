@@ -10,7 +10,9 @@ let {
 	probabilityLabel,
 	probabilityDescription,
 	ariaLabel,
-	feature
+	feature,
+	disabled = false,
+	disabledHint
 }: {
 	id: string;
 	label: string;
@@ -20,6 +22,10 @@ let {
 	ariaLabel: string;
 	/** 直接持有配置里的 $state 子对象，开关/概率就地修改 */
 	feature: OptionalFeature;
+	/** 置灰开关与滑杆：开关值原样保留，恢复后即回到先前状态 */
+	disabled?: boolean;
+	/** 置灰时替换 description 显示的原因说明 */
+	disabledHint?: string;
 } = $props();
 </script>
 
@@ -28,10 +34,19 @@ let {
 		<div class="space-y-0.5">
 			<label for={id} class="text-sm font-medium">{label}</label>
 			<p id="{id}-desc" class="text-xs text-muted-foreground">
-				{description}
+				{#if disabled && disabledHint}
+					{disabledHint}
+				{:else}
+					{description}
+				{/if}
 			</p>
 		</div>
-		<Switch {id} aria-describedby="{id}-desc" bind:checked={feature.enabled} />
+		<Switch
+			{id}
+			aria-describedby="{id}-desc"
+			bind:checked={feature.enabled}
+			{disabled}
+		/>
 	</div>
 	{#if feature.enabled}
 		<div class="space-y-2">
@@ -48,6 +63,7 @@ let {
 				step={0.05}
 				bind:value={feature.probability}
 				aria-label={ariaLabel}
+				{disabled}
 			/>
 			<p class="text-xs text-muted-foreground">{probabilityDescription}</p>
 		</div>

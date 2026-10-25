@@ -48,6 +48,22 @@ export const durationLabels: Record<string, () => string> = Object.fromEntries(
 	durationOptions.map((option) => [option.id, option.label])
 );
 
+/** 音程选项：度数（1=同度，2–8），音程模式下多选，步进方向随机 */
+export const intervalOptions: { id: number; label: () => string }[] = [
+	{ id: 1, label: () => m.intervalUnison() },
+	{ id: 2, label: () => m.intervalSecond() },
+	{ id: 3, label: () => m.intervalThird() },
+	{ id: 4, label: () => m.intervalFourth() },
+	{ id: 5, label: () => m.intervalFifth() },
+	{ id: 6, label: () => m.intervalSixth() },
+	{ id: 7, label: () => m.intervalSeventh() },
+	{ id: 8, label: () => m.intervalOctave() }
+];
+
+export const intervalLabels: Record<number, () => string> = Object.fromEntries(
+	intervalOptions.map((option) => [option.id, option.label])
+);
+
 export const timeSignatureOptions: {
 	id: TimeSignature;
 	label: string;
@@ -63,15 +79,40 @@ export const timeSignatureLabels: Record<string, string> = Object.fromEntries(
 	timeSignatureOptions.map((option) => [option.id, option.label])
 );
 
-export const rangePresets: {
+/** 音域八度预设：按 C 分组的八度区间，可叠加选择，合并为连续音域 */
+export const rangeOctavePresets: {
 	id: string;
 	label: () => string;
 	value: number[];
 }[] = [
-	{ id: 'near', label: () => m.rangePresetNear(), value: [60, 72] },
-	{ id: 'basic', label: () => m.rangePresetBasic(), value: [48, 72] },
-	{ id: 'wide', label: () => m.rangePresetWide(), value: [36, 84] },
-	{ id: 'full', label: () => m.rangePresetFull(), value: [21, 108] }
+	{ id: 'C1-C2', label: () => 'C1–C2', value: [24, 36] },
+	{ id: 'C2-C3', label: () => 'C2–C3', value: [36, 48] },
+	{ id: 'C3-C4', label: () => 'C3–C4', value: [48, 60] },
+	{ id: 'C4-C5', label: () => 'C4–C5', value: [60, 72] },
+	{ id: 'C5-C6', label: () => 'C5–C6', value: [72, 84] },
+	{ id: 'C6-C7', label: () => 'C6–C7', value: [84, 96] },
+	{ id: 'C7-C8', label: () => 'C7–C8', value: [96, 108] }
+];
+
+/** 快捷预设：谱表范围，点击直接应用并清空八度选择。
+ *  常规为下加一线–上加一线；扩展为下加四线–上加四线（含第四线本身）。 */
+export const rangeQuickPresets: {
+	id: string;
+	label: () => string;
+	value: number[];
+}[] = [
+	{ id: 'treble', label: () => m.clefTreble(), value: [60, 81] },
+	{
+		id: 'treble-extended',
+		label: () => m.rangePresetTrebleExtended(),
+		value: [50, 91]
+	},
+	{ id: 'bass', label: () => m.clefBass(), value: [40, 60] },
+	{
+		id: 'bass-extended',
+		label: () => m.rangePresetBassExtended(),
+		value: [29, 71]
+	}
 ];
 
 /** 拍号的分母决定默认时值单位：/4 拍默认四分，/8 拍默认八分 */

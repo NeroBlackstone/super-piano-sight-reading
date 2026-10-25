@@ -2,6 +2,7 @@
 import { onMount, untrack } from 'svelte';
 import ClefCard from '#lib/components/practice/clef-card.svelte';
 import KeysCard from '#lib/components/practice/keys-card.svelte';
+import MelodyCard from '#lib/components/practice/melody-card.svelte';
 import PracticeCard from '#lib/components/practice/practice-card.svelte';
 import RangeCard from '#lib/components/practice/range-card.svelte';
 import RhythmCard from '#lib/components/practice/rhythm-card.svelte';
@@ -71,10 +72,12 @@ $effect.pre(() => {
 	<div class="flex min-w-0 flex-col gap-6">
 		<!-- 谱号 -->
 		<ClefCard {config} />
-		<!-- 调号 -->
-		<KeysCard {config} />
 		<!-- 音域 -->
 		<RangeCard {config} />
+		<!-- 旋律 -->
+		<MelodyCard {config} />
+		<!-- 调号 -->
+		<KeysCard {config} />
 		<!-- 音符与节奏 -->
 		<RhythmCard {config} />
 		<!-- 练习设置 -->

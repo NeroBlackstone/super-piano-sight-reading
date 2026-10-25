@@ -19,6 +19,7 @@ import {
 } from './event.js';
 import {
 	ACC_SUFFIX,
+	diatonicPool,
 	KEY_ALTERATIONS,
 	LETTERS,
 	NATURAL_PC,
@@ -56,82 +57,157 @@ function naturalWeights(candidates: Duration[]): number[] {
 	return candidates.map((d) => NATURAL_DURATION_WEIGHTS[d] || shared);
 }
 
-/** 随机取一个调内音（临时变音记号特性照常叠加在调内音上） */
-function randomNoteEvent(
+/** 已拼写音高（不含节奏信息，时值等由调用方附加） */
+interface SpelledPitch {
+	midi: number;
+	vexKey: string;
+	accidental: NoteEvent['accidental'];
+}
+
+/** 单个音符的取音来源：随机模式与音程模式各有一个实现 */
+type PitchSource = () => SpelledPitch;
+
+/** 调内音池内 MIDI 的拼写部件（池内音级的 pc 一定能在 degrees 中找到） */
+function scaleToneParts(
+	midi: number,
+	degrees: ReturnType<typeof scaleDegrees>
+) {
+	const pc = ((midi % 12) + 12) % 12;
+	const degree = degrees.find((d) => d.pc === pc) as (typeof degrees)[number];
+	const letter = LETTERS[degree.letterIndex];
+	const naturalPc = NATURAL_PC[degree.letterIndex];
+	/** 该音级自带的调号升降 */
+	const acc = degree.alteration;
+	const octave = Math.floor((midi - naturalPc - acc) / 12) - 1;
+	return { letter, naturalPc, acc, keyAlt: acc, octave };
+}
+
+/** 随机模式：每个音独立随机取调内音（音高池只含调内音级，临时变音记号特性照常叠加） */
+function makeRandomSource(
 	config: PracticeConfig,
 	key: KeyId,
-	duration: Duration,
-	dots: boolean,
-	triplet: boolean,
 	rng: () => number
-): NoteEvent {
-	const low = config.range[0];
-	const high = config.range[1];
+): PitchSource {
 	const degrees = scaleDegrees(key);
+	const pool = diatonicPool(config.range, key);
+	const [low, high] = config.range;
 
-	// 音高池只含调内音级：随机抽到的音一定在调号内，关闭临时记号时谱面无意外升降号
-	const pcs = new Set(degrees.map((d) => d.pc));
-	const pool: number[] = [];
-	for (let m = low; m <= high; m++) {
-		if (pcs.has(((m % 12) + 12) % 12)) pool.push(m);
-	}
+	return () => {
+		let midi: number;
+		let letter: string;
+		let naturalPc: number;
+		let acc: number;
+		let keyAlt: number;
+		let octave: number;
 
-	let midi: number;
-	/** 音名字母 */
-	let letter: string;
-	/** 写进 vexKey 的升降（音级自带的调号升降） */
-	let acc: number;
-	/** 该字母在调号里的升降（临时记号玩法用） */
-	let keyAlt: number;
-	let naturalPc: number;
-	let octave: number;
-
-	if (pool.length > 0) {
-		midi = pick(pool, rng);
-		const pc = ((midi % 12) + 12) % 12;
-		const degree = degrees.find((d) => d.pc === pc) as (typeof degrees)[number];
-		letter = LETTERS[degree.letterIndex];
-		naturalPc = NATURAL_PC[degree.letterIndex];
-		acc = keyAlt = degree.alteration;
-		octave = Math.floor((midi - naturalPc - acc) / 12) - 1;
-	} else {
-		// 防御：音域退化（如 [63,63] 全是调外音）时退回半音随机
-		midi = low + Math.floor(rng() * (high - low + 1));
-		const spelling = spell(midi, key);
-		letter = spelling.letter;
-		naturalPc = spelling.naturalPc;
-		acc = spelling.accidental;
-		keyAlt = KEY_ALTERATIONS[key][letter] ?? 0;
-		octave = spelling.octave;
-	}
-
-	let vexKey = `${letter}${ACC_SUFFIX[acc]}/${octave}`;
-	let accidental: NoteEvent['accidental'] = null;
-
-	if (config.accidentals.enabled && rng() < config.accidentals.probability) {
-		// 调号内升降的字母：还原或反向变化；本位字母：升或降。
-		// 避免重升/重降这类生僻写法。
-		const target =
-			keyAlt !== 0 ? (rng() < 0.6 ? 0 : -keyAlt) : rng() < 0.5 ? 1 : -1;
-		const candidate = 12 * (octave + 1) + naturalPc + target;
-		if (candidate >= low && candidate <= high) {
-			midi = candidate;
-			accidental = target === 0 ? 'n' : target > 0 ? '#' : 'b';
-			vexKey = `${letter}${target === 0 ? '' : target > 0 ? '#' : 'b'}/${octave}`;
+		if (pool.length > 0) {
+			midi = pick(pool, rng);
+			({ letter, naturalPc, acc, keyAlt, octave } = scaleToneParts(
+				midi,
+				degrees
+			));
+		} else {
+			// 防御：音域退化（如 [63,63] 全是调外音）时退回半音随机
+			midi = low + Math.floor(rng() * (high - low + 1));
+			const spelling = spell(midi, key);
+			letter = spelling.letter;
+			naturalPc = spelling.naturalPc;
+			acc = spelling.accidental;
+			keyAlt = KEY_ALTERATIONS[key][letter] ?? 0;
+			octave = spelling.octave;
 		}
-	}
 
-	return { midi, vexKey, accidental, duration, dots, triplet };
+		let vexKey = `${letter}${ACC_SUFFIX[acc]}/${octave}`;
+		let accidental: NoteEvent['accidental'] = null;
+
+		if (config.accidentals.enabled && rng() < config.accidentals.probability) {
+			// 调号内升降的字母：还原或反向变化；本位字母：升或降。
+			// 避免重升/重降这类生僻写法。
+			const target =
+				keyAlt !== 0 ? (rng() < 0.6 ? 0 : -keyAlt) : rng() < 0.5 ? 1 : -1;
+			const candidate = 12 * (octave + 1) + naturalPc + target;
+			if (candidate >= low && candidate <= high) {
+				midi = candidate;
+				accidental = target === 0 ? 'n' : target > 0 ? '#' : 'b';
+				vexKey = `${letter}${target === 0 ? '' : target > 0 ? '#' : 'b'}/${octave}`;
+			}
+		}
+
+		return { midi, vexKey, accidental };
+	};
+}
+
+/**
+ * 音程模式：每个音从上一个音出发，按所选度数在调内音池上步进，方向随机。
+ * 度数按调内音级计（池内下标差 = 度数 - 1），大/小/纯由调号自然决定，
+ * 临时变音记号不生效。目标出音域时该方向不可用（相当于在边界处反向）；
+ * 完全放不下时保持同音。首音随机起步；休止符不动锚点，链跨休止延续。
+ */
+function makeIntervalSource(
+	config: PracticeConfig,
+	key: KeyId,
+	rng: () => number
+): PitchSource {
+	const degrees = scaleDegrees(key);
+	const pool = diatonicPool(config.range, key);
+	const intervals = config.melody.intervals;
+	/** 上一个音在池内的下标；-1 = 本题尚未起步 */
+	let anchor = -1;
+
+	return () => {
+		if (pool.length === 0) {
+			// 防御：音域内没有调内音时退回半音随机（与随机模式一致）
+			const midi =
+				config.range[0] +
+				Math.floor(rng() * (config.range[1] - config.range[0] + 1));
+			const spelling = spell(midi, key);
+			return {
+				midi,
+				vexKey: `${spelling.letter}${ACC_SUFFIX[spelling.accidental]}/${spelling.octave}`,
+				accidental: null
+			};
+		}
+		if (anchor < 0) {
+			anchor = Math.floor(rng() * pool.length);
+		} else {
+			// 所选度数上下两个方向的目标去重后，只留仍在音域内的，等概率抽取
+			const targets = new Set<number>();
+			for (const interval of intervals) {
+				const steps = interval - 1;
+				targets.add(anchor + steps);
+				targets.add(anchor - steps);
+			}
+			const valid = [...targets].filter((t) => t >= 0 && t < pool.length);
+			// 任何所选音程都放不下时保持同音（配置页会提示音域过窄）
+			if (valid.length > 0) anchor = pick(valid, rng);
+		}
+		const { letter, acc, octave } = scaleToneParts(pool[anchor], degrees);
+		return {
+			midi: pool[anchor],
+			vexKey: `${letter}${ACC_SUFFIX[acc]}/${octave}`,
+			accidental: null
+		};
+	};
+}
+
+/** 按配置的旋律模式创建取音来源 */
+function makePitchSource(
+	config: PracticeConfig,
+	key: KeyId,
+	rng: () => number
+): PitchSource {
+	return config.melody.mode === 'interval'
+		? makeIntervalSource(config, key, rng)
+		: makeRandomSource(config, key, rng);
 }
 
 function makeEvent(
 	config: PracticeConfig,
-	key: KeyId,
 	duration: Duration,
 	dots: boolean,
 	triplet: boolean,
 	isRest: boolean,
-	rng: () => number
+	nextPitch: PitchSource
 ): NoteEvent {
 	if (isRest) {
 		return {
@@ -143,15 +219,15 @@ function makeEvent(
 			triplet
 		};
 	}
-	return randomNoteEvent(config, key, duration, dots, triplet, rng);
+	const { midi, vexKey, accidental } = nextPitch();
+	return { midi, vexKey, accidental, duration, dots, triplet };
 }
 
 /** 剩余时值放不下任何可选时值时，用休止符按二进制拆分补齐 */
 function fillWithRests(
 	config: PracticeConfig,
-	key: KeyId,
-	units: number,
-	rng: () => number
+	nextPitch: PitchSource,
+	units: number
 ): NoteEvent[] {
 	const fallback: Duration[] = [
 		...new Set<Duration>([
@@ -165,7 +241,7 @@ function fillWithRests(
 	let left = units;
 	while (left > 0) {
 		const duration = fallback.find((d) => UNITS[d] <= left) ?? 'sixteenth';
-		events.push(makeEvent(config, key, duration, false, false, true, rng));
+		events.push(makeEvent(config, duration, false, false, true, nextPitch));
 		left -= UNITS[duration];
 	}
 	return events;
@@ -178,19 +254,19 @@ function fillWithRests(
  */
 function generateMeasure(
 	config: PracticeConfig,
-	key: KeyId,
 	timeSignature: TimeSignature,
+	nextPitch: PitchSource,
 	rng: () => number
 ): NoteEvent[] {
 	const capacity = MEASURE_CAPACITY[timeSignature];
 	for (let attempt = 0; attempt < 20; attempt++) {
-		const measure = fillMeasure(config, key, capacity, rng);
+		const measure = fillMeasure(config, capacity, nextPitch, rng);
 		if (!tripletCrossesBeat(measure, timeSignature)) return measure;
 	}
 	return fillMeasure(
 		{ ...config, triplets: { ...config.triplets, enabled: false } },
-		key,
 		capacity,
+		nextPitch,
 		rng
 	);
 }
@@ -198,8 +274,8 @@ function generateMeasure(
 /** 生成一个小节内容：按容量贪心填充音符 / 休止符 / 附点 / 三连音 */
 function fillMeasure(
 	config: PracticeConfig,
-	key: KeyId,
 	capacity: number,
+	nextPitch: PitchSource,
 	rng: () => number
 ): NoteEvent[] {
 	const events: NoteEvent[] = [];
@@ -211,7 +287,7 @@ function fillMeasure(
 		const candidates = durations.filter((d) => UNITS[d] <= left);
 		if (candidates.length === 0) {
 			// 如 6/8 拍选了全音符：任何时值都放不下，整段用休止符补齐
-			events.push(...fillWithRests(config, key, left, rng));
+			events.push(...fillWithRests(config, nextPitch, left));
 			break;
 		}
 		const duration = config.naturalizeDurations
@@ -248,11 +324,13 @@ function fillMeasure(
 		if (triplet) {
 			for (let i = 0; i < 3; i++) {
 				const isRest = config.rests.enabled && rng() < config.rests.probability;
-				events.push(makeEvent(config, key, duration, false, true, isRest, rng));
+				events.push(
+					makeEvent(config, duration, false, true, isRest, nextPitch)
+				);
 			}
 		} else {
 			const isRest = config.rests.enabled && rng() < config.rests.probability;
-			events.push(makeEvent(config, key, duration, dots, false, isRest, rng));
+			events.push(makeEvent(config, duration, dots, false, isRest, nextPitch));
 		}
 		left -= cost;
 	}
@@ -265,9 +343,13 @@ export function generateExercise(
 	rng: () => number
 ): Exercise {
 	const key = pick(config.keys, rng);
+	// 取音来源跨小节持有：音程模式的"上一个音"锚点贯穿整题
+	const nextPitch = makePitchSource(config, key, rng);
 	const measures: NoteEvent[][] = [];
 	for (let i = 0; i < config.measuresPerExercise; i++) {
-		measures.push(generateMeasure(config, key, config.timeSignature, rng));
+		measures.push(
+			generateMeasure(config, config.timeSignature, nextPitch, rng)
+		);
 	}
 	return {
 		key,

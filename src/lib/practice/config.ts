@@ -36,6 +36,16 @@ export interface OptionalFeature {
 	probability: number;
 }
 
+/** 旋律生成方式：随机取音，或按所选音程从上一个音步进 */
+export type MelodyMode = 'random' | 'interval';
+
+/** 旋律进行：随机模式下每个音独立取；音程模式下相邻音按度数移动，临时变音记号不生效 */
+export interface MelodySettings {
+	mode: MelodyMode;
+	/** 音程模式允许的度数：1=同度，2–8（音程模式下至少 1 个） */
+	intervals: number[];
+}
+
 /** 附点：只在勾选的时值上生效，未勾选的时值不出现附点版本 */
 export interface DotSettings {
 	/** 允许附点的时值（应为 durations 的子集） */
@@ -50,6 +60,8 @@ export interface PracticeConfig {
 	keys: KeyId[];
 	/** 音域 [低音, 高音]，MIDI 音高（长度 2，low < high） */
 	range: number[];
+	/** 旋律进行方式 */
+	melody: MelodySettings;
 	timeSignature: TimeSignature;
 	/** BPM，一拍 = timeSignature 的分母（/4 拍为四分音符，/8 拍为八分音符） */
 	tempo: number;
@@ -88,11 +100,12 @@ export function createDefaultConfig(): PracticeConfig {
 		clef: 'treble',
 		keys: ['C'],
 		range: [48, 72],
+		melody: { mode: 'random', intervals: [] },
 		timeSignature: '4/4',
 		tempo: 72,
 		durations: ['quarter'],
 		naturalizeDurations: false,
-		rests: { enabled: true, probability: 0.15 },
+		rests: { enabled: true, probability: 0.05 },
 		accidentals: { enabled: false, probability: 0.05 },
 		dots: { durations: [], probability: 0.15 },
 		triplets: { enabled: false, probability: 0.1 },

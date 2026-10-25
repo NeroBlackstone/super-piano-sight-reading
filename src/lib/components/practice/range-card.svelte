@@ -10,7 +10,10 @@ import {
 	type PracticeConfig
 } from '#lib/practice/config.js';
 import { noteName } from '#lib/practice/note.js';
-import { rangePresets } from '#lib/practice/options.js';
+import {
+	rangeOctavePresets,
+	rangeQuickPresets
+} from '#lib/practice/options.js';
 
 let { config }: { config: PracticeConfig } = $props();
 
@@ -37,8 +40,38 @@ const blackKeys = whiteKeys
 const inRange = (midi: number) =>
 	midi >= config.range[0] && midi <= config.range[1];
 
-const applyPreset = (value: number[]) => {
+// 快捷预设生效：音域恰好等于谱表范围；此时八度按钮全部视为未选
+const isQuickActive = (value: number[]) =>
+	config.range[0] === value[0] && config.range[1] === value[1];
+const quickActive = () =>
+	rangeQuickPresets.some((preset) => isQuickActive(preset.value));
+
+const applyQuickPreset = (value: number[]) => {
 	config.range = [...value];
+};
+
+// 八度被视作选中：无快捷预设生效，且该八度完全落在当前音域内
+const isOctaveActive = (value: number[]) =>
+	!quickActive() && config.range[0] <= value[0] && config.range[1] >= value[1];
+
+// 八度叠加：未选中则并入（取并集的边界），已选中则移除后由剩余选中八度重新合并；
+// 合并出的音域是连续区间，去掉中间八度会补齐空洞，至少保留一个八度
+const toggleOctave = (preset: { id: string; value: number[] }) => {
+	if (!isOctaveActive(preset.value)) {
+		config.range = [
+			Math.min(config.range[0], preset.value[0]),
+			Math.max(config.range[1], preset.value[1])
+		];
+		return;
+	}
+	const rest = rangeOctavePresets.filter(
+		(it) => it.id !== preset.id && isOctaveActive(it.value)
+	);
+	if (rest.length === 0) return;
+	config.range = [
+		Math.min(...rest.map((it) => it.value[0])),
+		Math.max(...rest.map((it) => it.value[1]))
+	];
 };
 </script>
 
@@ -137,17 +170,34 @@ const applyPreset = (value: number[]) => {
 		</div>
 
 		<div class="mt-3 flex flex-wrap items-center gap-2">
-			<span class="text-xs font-medium text-muted-foreground"
-				>{m.rangePresets()}</span
-			>
-			{#each rangePresets as preset (preset.id)}
+			{#each rangeOctavePresets as preset (preset.id)}
 				<Button
 					type="button"
 					variant="outline"
 					size="sm"
-					onclick={() => applyPreset(preset.value)}
-					class="rounded-full {config.range[0] === preset.value[0] &&
-					config.range[1] === preset.value[1]
+					aria-pressed={isOctaveActive(preset.value)}
+					onclick={() => toggleOctave(preset)}
+					class="rounded-full {isOctaveActive(preset.value)
+						? 'border-primary bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground'
+						: ''}"
+				>
+					{preset.label()}
+				</Button>
+			{/each}
+		</div>
+
+		<div class="mt-3 flex flex-wrap items-center gap-2">
+			<span class="text-xs font-medium text-muted-foreground"
+				>{m.rangePresets()}</span
+			>
+			{#each rangeQuickPresets as preset (preset.id)}
+				<Button
+					type="button"
+					variant="outline"
+					size="sm"
+					aria-pressed={isQuickActive(preset.value)}
+					onclick={() => applyQuickPreset(preset.value)}
+					class="rounded-full {isQuickActive(preset.value)
 						? 'border-primary bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground'
 						: ''}"
 				>

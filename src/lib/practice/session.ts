@@ -39,6 +39,7 @@ function isValidShape(parsed: PracticeConfig): boolean {
 		parsed.durations.length > 0 &&
 		Array.isArray(parsed.range) &&
 		parsed.range.length === 2 &&
+		(parsed.melody?.mode === 'random' || parsed.melody?.mode === 'interval') &&
 		Array.isArray(parsed.dots?.durations)
 	);
 }

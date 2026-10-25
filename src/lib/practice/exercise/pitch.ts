@@ -60,6 +60,16 @@ export function scaleDegrees(key: KeyId): {
 	return degrees;
 }
 
+/** 音域内某调的调内音池（升序 MIDI）。音程模式按池内下标步进：下标差 1 = 二度，差 N = N+1 度 */
+export function diatonicPool(range: number[], key: KeyId): number[] {
+	const pcs = new Set(scaleDegrees(key).map((degree) => degree.pc));
+	const pool: number[] = [];
+	for (let midi = range[0]; midi <= range[1]; midi++) {
+		if (pcs.has(((midi % 12) + 12) % 12)) pool.push(midi);
+	}
+	return pool;
+}
+
 /** 相对本位音级的升降 → VexFlow 音名后缀 */
 export const ACC_SUFFIX: Record<number, string> = {
 	'-2': 'bb',

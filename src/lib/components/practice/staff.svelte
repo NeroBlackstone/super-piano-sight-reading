@@ -1,13 +1,14 @@
 <script lang="ts">
 import { onMount } from 'svelte';
-import type { EasyScore, Factory, StemmableNote, Voice } from 'vexflow';
-import type { TimeSignature } from '#lib/practice/config.js';
+import type { EasyScore, Factory, StaveNote, StemmableNote, Voice } from 'vexflow';
+import type { KeyId, TimeSignature } from '#lib/practice/config.js';
 import {
 	applyDurationSplitRule,
 	applyRestGroupingRule,
 	applyTwoLevelRule,
 	type Exercise,
 	eventCost,
+	KEY_ALTERATIONS,
 	type NoteEvent,
 	snapToGrid,
 	UNITS
@@ -53,24 +54,113 @@ const DURATION_CODES: Record<string, string> = {
 const STAVE_MARGIN = 12;
 /** 每行（谱表系统）占的像素高度 */
 const ROW_HEIGHT = 140;
+/** 小节的最小宽度（px）：不超过基准事件数的小节就占这么宽 */
+const MIN_MEASURE_WIDTH = 250;
+/** 小节宽度的基准事件数：8 个音符（含休止符）的小节占最小宽度 */
+const BASE_EVENTS = 8;
+/** 超出基准的每个事件按此倍数计权：密集小节的拉伸比等比例更宽 */
+const EXCESS_WEIGHT = 3;
 
-function measuresPerRow(w: number): number {
-	if (w < 600) return 2;
-	if (w < 900) return 3;
-	return 4;
+/**
+ * 小节宽度的计权：不超过 BASE_EVENTS 个事件的小节都算基准宽（最小宽度）；
+ * 超出的部分每个事件按 EXCESS_WEIGHT 倍计，事件越多的小节拉伸越猛
+ * （密集小节的十六分音符字形 / 符杠更占宽，仅按个数等比例分宽不够）。
+ */
+function measureWeight(eventCount: number): number {
+	return eventCount <= BASE_EVENTS
+		? BASE_EVENTS
+		: BASE_EVENTS + EXCESS_WEIGHT * (eventCount - BASE_EVENTS);
 }
 
-function chunk<T>(items: T[], size: number): T[][] {
-	const rows: T[][] = [];
-	for (let i = 0; i < items.length; i += size) {
-		rows.push(items.slice(i, i + size));
+/** 小节的期望宽度：计权除以基准事件数，再乘最小宽度 */
+function desiredWidth(eventCount: number): number {
+	return (MIN_MEASURE_WIDTH * measureWeight(eventCount)) / BASE_EVENTS;
+}
+
+/**
+ * 按期望宽度把小节贪心分行：一行尽量多装，装不下下一个小节就换行，
+ * 不硬凑固定的小节数；每行至少一个小节（期望宽度超过行宽的密集小节独占一行）。
+ */
+function layoutRows(
+	measures: NoteEvent[][],
+	available: number
+): NoteEvent[][][] {
+	const rows: NoteEvent[][][] = [];
+	let row: NoteEvent[][] = [];
+	let rowWidth = 0;
+	for (const measure of measures) {
+		const w = desiredWidth(measure.length);
+		if (row.length > 0 && rowWidth + w > available) {
+			rows.push(row);
+			row = [];
+			rowWidth = 0;
+		}
+		row.push(measure);
+		rowWidth += w;
 	}
+	if (row.length > 0) rows.push(row);
 	return rows;
 }
 
 /** 符杠分组的拍长：/4 拍按四分音符，6/8 按附点四分音符 */
 function beatUnitsFor(timeSignature: TimeSignature): number {
 	return timeSignature === '6/8' ? 6 : 4;
+}
+
+/** vexKey（如 'c#/4'）→ 字母 + 相对本位音级的升降数 + 八度 */
+function parseVexKey(vexKey: string): {
+	letter: string;
+	alteration: number;
+	octave: number;
+} | null {
+	const match = /^([a-g])(#{1,2}|b{1,2})?\/(\d)$/.exec(vexKey);
+	if (!match) return null;
+	const suffix = match[2] ?? '';
+	const alteration =
+		suffix === '' ? 0 : suffix.startsWith('#') ? suffix.length : -suffix.length;
+	return { letter: match[1], alteration, octave: Number(match[3]) };
+}
+
+/** 升降数 → 记号类型（生成器只产出单升 / 单降 / 还原） */
+const ACCIDENTAL_TYPES: Record<number, '#' | 'b' | 'n'> = {
+	1: '#',
+	'-1': 'b',
+	0: 'n'
+};
+
+/**
+ * 跨小节提醒记号：临时变音到小节线即失效，但读谱容易把它延续到下一小节；
+ * 同一字母同一八度的音在下一小节首次出现且回到调号状态（变音被取消）时，
+ * 强制显示调号状态的记号——字母未被调号升降时即还原记号，否则为回到调号的升 / 降号。
+ * 返回逐小节的「事件下标 → 记号类型」，applyAccidentals 只看单个小节，跨小节的提醒在这里算。
+ */
+function courtesyAccidentals(
+	measures: NoteEvent[][],
+	key: KeyId
+): Map<number, '#' | 'b' | 'n'>[] {
+	const courtesy = measures.map(() => new Map<number, '#' | 'b' | 'n'>());
+	// 上一小节结束时各 letter+octave 的升降状态；本小节未出现的音不延续提醒
+	let carried = new Map<string, number>();
+
+	measures.forEach((measure, measureIndex) => {
+		const endState = new Map<string, number>();
+		measure.forEach((event, eventIndex) => {
+			if (event.midi === null) return;
+			const parsed = parseVexKey(event.vexKey);
+			if (!parsed) return;
+			const id = `${parsed.letter}/${parsed.octave}`;
+			if (!endState.has(id)) {
+				const keyAlt = KEY_ALTERATIONS[key][parsed.letter] ?? 0;
+				const prevAlt = carried.get(id) ?? keyAlt;
+				if (parsed.alteration === keyAlt && prevAlt !== keyAlt) {
+					courtesy[measureIndex].set(eventIndex, ACCIDENTAL_TYPES[keyAlt]);
+				}
+			}
+			endState.set(id, parsed.alteration);
+		});
+		carried = endState;
+	});
+	return courtesy;
 }
 
 function draw(
@@ -80,7 +170,12 @@ function draw(
 	width: number
 ) {
 	container.innerHTML = '';
-	const rows = chunk(exercise.measures, measuresPerRow(width));
+	const notated = exercise.measures.map((measure) =>
+		notatedEvents(measure, exercise)
+	);
+	const courtesy = courtesyAccidentals(notated, exercise.key);
+	const available = width - STAVE_MARGIN * 2;
+	const rows = layoutRows(notated, available);
 	const height = rows.length * ROW_HEIGHT + 20;
 
 	const renderer = new vf.Renderer(container, vf.Renderer.Backends.SVG);
@@ -99,22 +194,42 @@ function draw(
 		stem: 'auto'
 	});
 
-	rows.forEach((rowMeasures, rowIndex) => {
+	let measureIndex = 0;
+	rows.forEach((rowEvents, rowIndex) => {
 		const y = rowIndex * ROW_HEIGHT + 20;
-		const staveWidth = (width - STAVE_MARGIN * 2) / rowMeasures.length;
+		// 末行不两端对齐，按期望宽度排（小节独占一行且超宽时收缩到行宽）；
+		// 其余行按期望宽度等比放大铺满整行——铺满只会变宽，最小宽度仍有保证
+		const desiredSum = rowEvents.reduce(
+			(sum, events) => sum + desiredWidth(events.length),
+			0
+		);
+		const scale =
+			rowIndex === rows.length - 1
+				? Math.min(1, available / desiredSum)
+				: available / desiredSum;
+		let x = STAVE_MARGIN;
 
-		rowMeasures.forEach((measure, i) => {
+		rowEvents.forEach((events, i) => {
+			const staveWidth = desiredWidth(events.length) * scale;
 			// 每个小节一个 System：宽度固定，小节内的排布由 System 自行完成，
 			// 首小节的谱号 / 调号 / 拍号占宽不会挤歪后面的音符。
 			const system = factory.System({
-				x: STAVE_MARGIN + i * staveWidth,
+				x,
 				y,
 				width: staveWidth
 			});
+			x += staveWidth;
 
-			const voice = buildVoice(factory, score, measure, exercise);
+			const voice = buildVoice(factory, score, events, exercise);
 			// 临时记号交给 VexFlow 决定：对照调号 + 小节内上下文，该画的画、重复的删
 			vf.Accidental.applyAccidentals([voice], exercise.key);
+			// 跨小节提醒记号在其后叠加：先加会被 applyAccidentals 当重复记号删掉
+			for (const [j, type] of courtesy[measureIndex]) {
+				(voice.getTickables()[j] as StaveNote).addModifier(
+					new vf.Accidental(type),
+					0
+				);
+			}
 
 			const stave = system.addStave({
 				voices: [voice],
@@ -130,8 +245,9 @@ function draw(
 			}
 			// 全曲最后一小节画终止线
 			const isLast =
-				rowIndex === rows.length - 1 && i === rowMeasures.length - 1;
+				rowIndex === rows.length - 1 && i === rowEvents.length - 1;
 			stave.setEndBarType(isLast ? vf.BarlineType.END : vf.BarlineType.SINGLE);
+			measureIndex++;
 		});
 	});
 
@@ -153,23 +269,29 @@ function toEasyScoreLine(measure: NoteEvent[]): string {
 		.join(', ');
 }
 
-function buildVoice(
-	factory: Factory,
-	score: EasyScore,
-	measure: NoteEvent[],
-	exercise: Exercise
-): Voice {
-	// 记谱层变换（不改演奏内容）：先按时值拆分规则把不在拍点上的一拍及以上音符拆开，
-	// 再由两等级规则断开跨必标拍点的音符（其切点都落在拍点上，不会破坏前一步），
-	// 最后把连续休止符按拍点重新编组，每个休止符都不跨节拍
-	// （休止符从不连线，重组不改动任何音符，不会破坏前两步）
-	const events = applyRestGroupingRule(
+/**
+ * 一个小节的记谱层变换（不改演奏内容）：先按时值拆分规则把不在拍点上的一拍及以上音符拆开，
+ * 再由两等级规则断开跨必标拍点的音符（其切点都落在拍点上，不会破坏前一步），
+ * 最后把连续休止符按拍点重新编组，每个休止符都不跨节拍
+ * （休止符从不连线，重组不改动任何音符，不会破坏前两步）。
+ * 变换后的事件数即实际渲染的音符（含休止符）个数，小节宽度按它加权。
+ */
+function notatedEvents(measure: NoteEvent[], exercise: Exercise): NoteEvent[] {
+	return applyRestGroupingRule(
 		applyTwoLevelRule(
 			applyDurationSplitRule(measure, exercise.timeSignature),
 			exercise.timeSignature
 		),
 		exercise.timeSignature
 	);
+}
+
+function buildVoice(
+	factory: Factory,
+	score: EasyScore,
+	events: NoteEvent[],
+	exercise: Exercise
+): Voice {
 	const notes = score.notes(toEasyScoreLine(events));
 
 	// 生成器保证三连音是连续 3 个同质事件；

@@ -1,5 +1,5 @@
 <script lang="ts">
-import { Play, RotateCcw } from '@lucide/svelte';
+import { Lightbulb, Play, RotateCcw } from '@lucide/svelte';
 import { Button } from '#lib/components/ui/button/index.js';
 import * as Card from '#lib/components/ui/card/index.js';
 import { Separator } from '#lib/components/ui/separator/index.js';
@@ -10,6 +10,7 @@ import {
 	beatUnitFor,
 	clefLabels,
 	durationLabels,
+	intervalLabels,
 	keyLabels,
 	tempoLabel,
 	timeSignatureLabels
@@ -45,6 +46,15 @@ const summaryAccidentals = $derived(
 			})
 		: m.summaryAccidentalsOff()
 );
+const summaryMelody = $derived(
+	config.melody.mode === 'interval'
+		? config.melody.intervals.length > 0
+			? config.melody.intervals
+					.map((id) => intervalLabels[id]?.() ?? String(id))
+					.join(m.listJoiner())
+			: m.melodyIntervalsNone()
+		: m.melodyModeRandom()
+);
 </script>
 
 {#snippet summaryRow(label: string, value: string)}
@@ -68,6 +78,7 @@ const summaryAccidentals = $derived(
 					m.summaryRange(),
 					`${noteName(config.range[0])} – ${noteName(config.range[1])}`
 				)}
+				{@render summaryRow(m.summaryMelody(), summaryMelody)}
 				{@render summaryRow(
 					m.summaryTimeSig(),
 					timeSignatureLabels[config.timeSignature]
@@ -90,7 +101,10 @@ const summaryAccidentals = $derived(
 				type="button"
 				size="lg"
 				class="w-full"
-				disabled={config.keys.length === 0 || config.durations.length === 0}
+				disabled={config.keys.length === 0 ||
+					config.durations.length === 0 ||
+					(config.melody.mode === 'interval' &&
+						config.melody.intervals.length === 0)}
 				onclick={startPractice}
 			>
 				<Play class="size-4" />
@@ -105,4 +119,11 @@ const summaryAccidentals = $derived(
 			</p>
 		</Card.Content>
 	</Card.Root>
+
+	<div
+		class="mt-3 flex gap-2 rounded-xl border bg-muted/40 p-3 text-xs leading-relaxed text-muted-foreground"
+	>
+		<Lightbulb class="mt-0.5 size-3.5 shrink-0" />
+		<p>{m.summaryPracticeTip()}</p>
+	</div>
 </aside>
