@@ -6,8 +6,11 @@
  * - duration-split-rule.ts 音符时值拆分规则（大于等于一拍的音符必须落在拍点上）
  * - rest-grouping-rule.ts 连续休止符重组规则（休止符不跨越节拍）
  * - pitch.ts              音高拼写（MIDI → 按调号的音名）与调内音池
+ * - pitch-source.ts       取音来源公共类型与随机 / 音程模式实现
+ * - chord-source.ts       分解和弦模式的取音来源
+ * - rhythm.ts             节奏与小节填充（时值、附点、三连音、休止符）
  * - rng.ts                可复现随机源
- * - generator.ts          按 PracticeConfig 生成题目
+ * - generator.ts          组装入口：按 PracticeConfig 生成题目
  */
 
 export { applyDurationSplitRule } from './duration-split-rule.js';
