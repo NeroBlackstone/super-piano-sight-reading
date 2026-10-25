@@ -10,6 +10,7 @@ import type {
 	ChordInversion,
 	ChordSource,
 	ChordTypeId,
+	DiatonicChordSize,
 	Duration,
 	KeyId,
 	TimeSignature
@@ -130,7 +131,7 @@ export const chordDirectionLabels: Record<string, () => string> =
 		chordDirectionOptions.map((option) => [option.id, option.label])
 	);
 
-/** 分解和弦来源：顺阶用调内各级三和弦（类型由调号决定），自定义手动选类型 */
+/** 分解和弦来源：顺阶用调内各级三和弦/七和弦（类型由调号决定），自定义手动选类型 */
 export const chordSourceOptions: {
 	id: ChordSource;
 	label: () => string;
@@ -142,6 +143,20 @@ export const chordSourceOptions: {
 export const chordSourceLabels: Record<string, () => string> =
 	Object.fromEntries(
 		chordSourceOptions.map((option) => [option.id, option.label])
+	);
+
+/** 顺阶来源的和弦结构选项：三和弦（3 个音）/ 七和弦（4 个音），可多选，类型仍由调号决定 */
+export const diatonicSizeOptions: {
+	id: DiatonicChordSize;
+	label: () => string;
+}[] = [
+	{ id: 'triad', label: () => m.chordSizeTriad() },
+	{ id: 'seventh', label: () => m.chordSizeSeventh() }
+];
+
+export const diatonicSizeLabels: Record<string, () => string> =
+	Object.fromEntries(
+		diatonicSizeOptions.map((option) => [option.id, option.label])
 	);
 
 export const timeSignatureOptions: {

@@ -12,6 +12,7 @@ import type {
 	ChordInversion,
 	ChordSource,
 	ChordTypeId,
+	DiatonicChordSize,
 	MelodyMode,
 	PracticeConfig
 } from '#lib/practice/config.js';
@@ -25,6 +26,7 @@ import {
 	chordDirectionOptions,
 	chordInversionOptions,
 	chordSourceOptions,
+	diatonicSizeOptions,
 	intervalOptions,
 	SEVENTH_CHORD_TYPES,
 	seventhTypeOptions,
@@ -32,6 +34,10 @@ import {
 } from '#lib/practice/options.js';
 
 let { config }: { config: PracticeConfig } = $props();
+
+// shadcn 默认选中态 bg-muted 偏淡，选中时改为 primary 实底反色文字
+const activeItemClass =
+	'data-[state=on]:bg-primary data-[state=on]:text-primary-foreground data-[state=on]:hover:bg-primary/90 data-[state=on]:hover:text-primary-foreground';
 
 // bits-ui 单选组再次点击会把值清空成 ''，这里直接驳回，模式必选
 function changeMode(value: string) {
@@ -49,13 +55,16 @@ function toggleInterval(interval: number, checked: boolean) {
 function changeChordSource(value: string) {
 	if (value === 'diatonic' || value === 'custom') {
 		config.melody.chord.source = value as ChordSource;
-		// 顺阶只有三和弦，第三转位无意义，自动移除
-		if (value === 'diatonic') {
-			config.melody.chord.inversions = config.melody.chord.inversions.filter(
-				(i) => i !== 3
-			);
-		}
+		pruneThirdInversion();
 	}
+}
+
+// 顺阶结构勾选框：增删 diatonicSizes 中的结构
+function toggleDiatonicSize(size: DiatonicChordSize, checked: boolean) {
+	config.melody.chord.diatonicSizes = checked
+		? [...config.melody.chord.diatonicSizes, size]
+		: config.melody.chord.diatonicSizes.filter((id) => id !== size);
+	pruneThirdInversion();
 }
 
 // 三和弦 / 七和弦两组勾选框共用 types 数组：单个勾选框增删对应类型
@@ -63,12 +72,7 @@ function toggleChordType(type: ChordTypeId, checked: boolean) {
 	config.melody.chord.types = checked
 		? [...config.melody.chord.types, type]
 		: config.melody.chord.types.filter((id) => id !== type);
-	// 只剩三和弦时第三转位无意义，自动移除
-	if (!config.melody.chord.types.some((id) => SEVENTH_CHORD_TYPES.has(id))) {
-		config.melody.chord.inversions = config.melody.chord.inversions.filter(
-			(i) => i !== 3
-		);
-	}
+	pruneThirdInversion();
 }
 
 function toggleInversion(inversion: ChordInversion, checked: boolean) {
@@ -96,13 +100,24 @@ const rangeTooNarrow = $derived.by(() => {
 	return diatonicPool(config.range, config.key).length <= steps;
 });
 
-// 自定义来源下已选七和弦类型：第三转位只对七和弦开放（顺阶只有三和弦）
-const hasSeventhType = $derived(
-	config.melody.chord.source === 'custom' &&
-		config.melody.chord.types.some((id) => SEVENTH_CHORD_TYPES.has(id))
+// 当前来源下是否有七和弦可用（决定第三转位是否有意义）：
+// 自定义看所选类型，顺阶看所选结构
+const hasSeventhChord = $derived(
+	config.melody.chord.source === 'custom'
+		? config.melody.chord.types.some((id) => SEVENTH_CHORD_TYPES.has(id))
+		: config.melody.chord.diatonicSizes.includes('seventh')
 );
 
-// 所选和弦在所选调里放不下时提示（顺阶看各级三和弦，自定义看所选类型）
+// 不含七和弦时第三转位无意义，自动移除
+function pruneThirdInversion() {
+	if (!hasSeventhChord) {
+		config.melody.chord.inversions = config.melody.chord.inversions.filter(
+			(i) => i !== 3
+		);
+	}
+}
+
+// 所选和弦在所选调里放不下时提示（顺阶看所选结构的各级和弦，自定义看所选类型）
 const chordRangeTooNarrow = $derived.by(() => {
 	if (
 		config.melody.mode !== 'chord' ||
@@ -111,11 +126,15 @@ const chordRangeTooNarrow = $derived.by(() => {
 		return false;
 	}
 	if (config.melody.chord.source === 'diatonic') {
+		if (config.melody.chord.diatonicSizes.length === 0) {
+			return false;
+		}
 		return (
 			diatonicChordOptions(
 				config.range,
 				config.key,
-				config.melody.chord.inversions
+				config.melody.chord.inversions,
+				config.melody.chord.diatonicSizes
 			).length === 0
 		);
 	}
@@ -144,39 +163,26 @@ const chordRangeTooNarrow = $derived.by(() => {
 		<Card.Description>{m.melodyDescription()}</Card.Description>
 	</Card.Header>
 	<Card.Content class="flex flex-col gap-4">
-		<fieldset>
-			<legend class="mb-2 text-sm font-medium">{m.melodyModeLegend()}</legend>
+		<div class="flex flex-wrap items-center gap-2">
+			<span class="text-sm font-medium">{m.melodyModeLegend()}</span>
 			<ToggleGroup
 				type="single"
 				value={config.melody.mode}
 				onValueChange={changeMode}
 				variant="outline"
-				spacing={2}
-				class="flex w-full flex-wrap gap-2"
+				size="sm"
 			>
-				<ToggleGroupItem
-					value="random"
-					size="sm"
-					class="h-9 rounded-full px-3.5 data-[state=on]:border-primary! data-[state=on]:bg-primary! data-[state=on]:text-primary-foreground!"
-				>
+				<ToggleGroupItem value="random" class={activeItemClass}>
 					{m.melodyModeRandomNotes()}
 				</ToggleGroupItem>
-				<ToggleGroupItem
-					value="interval"
-					size="sm"
-					class="h-9 rounded-full px-3.5 data-[state=on]:border-primary! data-[state=on]:bg-primary! data-[state=on]:text-primary-foreground!"
-				>
+				<ToggleGroupItem value="interval" class={activeItemClass}>
 					{m.melodyModeInterval()}
 				</ToggleGroupItem>
-				<ToggleGroupItem
-					value="chord"
-					size="sm"
-					class="h-9 rounded-full px-3.5 data-[state=on]:border-primary! data-[state=on]:bg-primary! data-[state=on]:text-primary-foreground!"
-				>
+				<ToggleGroupItem value="chord" class={activeItemClass}>
 					{m.melodyModeChord()}
 				</ToggleGroupItem>
 			</ToggleGroup>
-		</fieldset>
+		</div>
 
 		{#if config.melody.mode === 'interval'}
 			<fieldset>
@@ -218,29 +224,22 @@ const chordRangeTooNarrow = $derived.by(() => {
 				</p>
 			</fieldset>
 		{:else if config.melody.mode === 'chord'}
-			<fieldset>
-				<legend class="mb-2 text-sm font-medium">
-					{m.chordSourceLegend()}
-				</legend>
+			<div class="flex flex-wrap items-center gap-2">
+				<span class="text-sm font-medium">{m.chordSourceLegend()}</span>
 				<ToggleGroup
 					type="single"
 					value={config.melody.chord.source}
 					onValueChange={changeChordSource}
 					variant="outline"
-					spacing={2}
-					class="flex w-full flex-wrap gap-2"
+					size="sm"
 				>
 					{#each chordSourceOptions as option (option.id)}
-						<ToggleGroupItem
-							value={option.id}
-							size="sm"
-							class="h-9 rounded-full px-3.5 data-[state=on]:border-primary! data-[state=on]:bg-primary! data-[state=on]:text-primary-foreground!"
-						>
+						<ToggleGroupItem value={option.id} class={activeItemClass}>
 							{option.label()}
 						</ToggleGroupItem>
 					{/each}
 				</ToggleGroup>
-			</fieldset>
+			</div>
 			{#if config.melody.chord.source === 'custom'}
 				<fieldset>
 					<legend class="mb-2 text-sm font-medium">
@@ -290,9 +289,38 @@ const chordRangeTooNarrow = $derived.by(() => {
 					{/if}
 				</fieldset>
 			{:else}
-				<p class="text-xs text-muted-foreground">
-					{m.melodyChordDiatonicHint()}
-				</p>
+				<fieldset>
+					<legend class="mb-2 text-sm font-medium">
+						{m.chordSizesLegend()}
+					</legend>
+					<div class="flex w-full flex-wrap items-center gap-x-5 gap-y-2">
+						{#each diatonicSizeOptions as option (option.id)}
+							<label
+								for="diatonic-size-{option.id}"
+								class="flex cursor-pointer items-center gap-2 text-sm"
+							>
+								<Checkbox
+									id="diatonic-size-{option.id}"
+									checked={config.melody.chord.diatonicSizes.includes(
+										option.id
+									)}
+									onCheckedChange={(checked) =>
+										toggleDiatonicSize(option.id, checked === true)}
+								/>
+								{option.label()}
+							</label>
+						{/each}
+					</div>
+					{#if config.melody.chord.diatonicSizes.length === 0}
+						<p class="mt-2 text-xs text-destructive">
+							{m.melodyChordSizesRequired()}
+						</p>
+					{:else}
+						<p class="mt-2 text-xs text-muted-foreground">
+							{m.melodyChordDiatonicHint()}
+						</p>
+					{/if}
+				</fieldset>
 			{/if}
 			<fieldset>
 				<legend class="mb-2 text-sm font-medium">
@@ -303,14 +331,14 @@ const chordRangeTooNarrow = $derived.by(() => {
 						<label
 							for="chord-inversion-{option.id}"
 							class="flex items-center gap-2 text-sm{option.seventhOnly &&
-							!hasSeventhType
+							!hasSeventhChord
 								? ' cursor-not-allowed opacity-50'
 								: ' cursor-pointer'}"
 						>
 							<Checkbox
 								id="chord-inversion-{option.id}"
 								checked={config.melody.chord.inversions.includes(option.id)}
-								disabled={option.seventhOnly && !hasSeventhType}
+								disabled={option.seventhOnly && !hasSeventhChord}
 								onCheckedChange={(checked) =>
 									toggleInversion(option.id, checked === true)}
 							/>
@@ -324,29 +352,22 @@ const chordRangeTooNarrow = $derived.by(() => {
 					</p>
 				{/if}
 			</fieldset>
-			<fieldset>
-				<legend class="mb-2 text-sm font-medium">
-					{m.chordDirectionLegend()}
-				</legend>
+			<div class="flex flex-wrap items-center gap-2">
+				<span class="text-sm font-medium">{m.chordDirectionLegend()}</span>
 				<ToggleGroup
 					type="single"
 					value={config.melody.chord.direction}
 					onValueChange={changeDirection}
 					variant="outline"
-					spacing={2}
-					class="flex w-full flex-wrap gap-2"
+					size="sm"
 				>
 					{#each chordDirectionOptions as option (option.id)}
-						<ToggleGroupItem
-							value={option.id}
-							size="sm"
-							class="h-9 rounded-full px-3.5 data-[state=on]:border-primary! data-[state=on]:bg-primary! data-[state=on]:text-primary-foreground!"
-						>
+						<ToggleGroupItem value={option.id} class={activeItemClass}>
 							{option.label()}
 						</ToggleGroupItem>
 					{/each}
 				</ToggleGroup>
-			</fieldset>
+			</div>
 			{#if chordRangeTooNarrow}
 				<p class="text-xs text-destructive">
 					{m.melodyChordRangeTooNarrow()}

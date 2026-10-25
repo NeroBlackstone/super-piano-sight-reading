@@ -13,6 +13,7 @@ import {
 	chordSourceLabels,
 	chordTypeLabels,
 	clefLabels,
+	diatonicSizeLabels,
 	durationLabels,
 	intervalLabels,
 	keyLabels,
@@ -67,7 +68,15 @@ const summaryMelody = $derived.by(() => {
 			chordDirectionLabels[chord.direction]?.() ?? chord.direction;
 		const source = chordSourceLabels[chord.source]?.() ?? chord.source;
 		if (chord.source === 'diatonic') {
-			return [m.melodyModeChord(), source, inversions, direction].join(' · ');
+			if (chord.diatonicSizes.length === 0) {
+				return m.melodyChordsNone();
+			}
+			const sizes = chord.diatonicSizes
+				.map((id) => diatonicSizeLabels[id]?.() ?? id)
+				.join(m.listJoiner());
+			return [m.melodyModeChord(), source, sizes, inversions, direction].join(
+				' · '
+			);
 		}
 		if (chord.types.length === 0) {
 			return m.melodyChordsNone();
@@ -133,7 +142,9 @@ const summaryMelody = $derived.by(() => {
 					(config.melody.mode === 'chord' &&
 						(config.melody.chord.inversions.length === 0 ||
 							(config.melody.chord.source === 'custom' &&
-								config.melody.chord.types.length === 0)))}
+								config.melody.chord.types.length === 0) ||
+							(config.melody.chord.source === 'diatonic' &&
+								config.melody.chord.diatonicSizes.length === 0)))}
 				onclick={startPractice}
 			>
 				<Play class="size-4" />

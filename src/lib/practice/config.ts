@@ -57,13 +57,18 @@ export type ChordInversion = 0 | 1 | 2 | 3;
 /** 分解和弦方向 */
 export type ChordDirection = 'up' | 'down';
 
-/** 分解和弦的和弦来源：顺阶（调内各级三和弦）或自定义（手动选择类型） */
+/** 分解和弦的和弦来源：顺阶（调内各级三和弦/七和弦）或自定义（手动选择类型） */
 export type ChordSource = 'diatonic' | 'custom';
+
+/** 顺阶来源的和弦结构：三和弦（3 个音）或七和弦（4 个音） */
+export type DiatonicChordSize = 'triad' | 'seventh';
 
 /** 分解和弦模式设置 */
 export interface ChordSettings {
 	/** 和弦来源：顺阶模式下类型由调号决定，不能单独指定 */
 	source: ChordSource;
+	/** 顺阶来源下的和弦结构（至少 1 个；自定义模式下不生效） */
+	diatonicSizes: DiatonicChordSize[];
 	/** 允许的和弦类型（自定义模式下至少 1 个；顺阶模式下不生效） */
 	types: ChordTypeId[];
 	/** 允许的转位（至少 1 个；和弦音数不够的转位不生效） */
@@ -140,6 +145,7 @@ export function createDefaultConfig(): PracticeConfig {
 			intervals: [],
 			chord: {
 				source: 'diatonic',
+				diatonicSizes: ['triad'],
 				types: ['major', 'minor'],
 				inversions: [0],
 				direction: 'up'

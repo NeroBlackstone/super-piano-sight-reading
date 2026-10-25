@@ -1,7 +1,12 @@
 /**
  * 音高拼写：MIDI → 音名（按调号选择等音拼写）。
  */
-import type { ChordInversion, ChordTypeId, KeyId } from '../config.js';
+import type {
+	ChordInversion,
+	ChordTypeId,
+	DiatonicChordSize,
+	KeyId
+} from '../config.js';
 
 export const LETTERS = ['c', 'd', 'e', 'f', 'g', 'a', 'b'] as const;
 /** 各音名的本位音级（半音数） */
@@ -122,7 +127,7 @@ export function chordFitsPool(
 	);
 }
 
-/** 三和弦的（三度半音数, 五度半音数）→ 和弦类型；顺阶三和弦由此从音级间距推出 */
+/** 三和弦的（三度半音数, 五度半音数）→ 和弦类型 */
 const TRIAD_BY_INTERVALS: Record<string, ChordTypeId> = {
 	'4,7': 'major',
 	'3,7': 'minor',
@@ -130,42 +135,64 @@ const TRIAD_BY_INTERVALS: Record<string, ChordTypeId> = {
 	'4,8': 'augmented'
 };
 
-/** 顺阶三和弦：大调调内第 degree 音级（0–6，0=主音）上叠置的三度构成的三和弦类型 */
-export function diatonicTriadType(key: KeyId, degree: number): ChordTypeId {
+/** 七和弦的（三度, 五度, 七度半音数）→ 和弦类型 */
+const SEVENTH_BY_INTERVALS: Record<string, ChordTypeId> = {
+	'4,7,11': 'maj7',
+	'4,7,10': 'dom7',
+	'3,7,10': 'min7',
+	'3,6,10': 'halfDim7',
+	'3,6,9': 'dim7'
+};
+
+/** 顺阶和弦：大调调内第 degree 音级（0–6，0=主音）上按三度叠置到五音（三和弦）或七音（七和弦）推出的类型 */
+export function diatonicChordType(
+	key: KeyId,
+	degree: number,
+	size: DiatonicChordSize
+): ChordTypeId {
 	const degrees = scaleDegrees(key);
 	const root = degrees[degree % 7].pc;
 	const third = degrees[(degree + 2) % 7].pc;
 	const fifth = degrees[(degree + 4) % 7].pc;
-	const key2 = `${(third - root + 12) % 12},${(fifth - root + 12) % 12}`;
-	return TRIAD_BY_INTERVALS[key2];
+	const key3 = `${(third - root + 12) % 12},${(fifth - root + 12) % 12}`;
+	if (size === 'triad') return TRIAD_BY_INTERVALS[key3];
+	const seventh = degrees[(degree + 6) % 7].pc;
+	return SEVENTH_BY_INTERVALS[`${key3},${(seventh - root + 12) % 12}`];
 }
 
-/** 顺阶模式下能整体放进音域的（音级 × 转位）组合；空数组 = 音域内一个都放不下 */
+/** 顺阶模式下能整体放进音域的（音级 × 结构 × 转位）组合；空数组 = 音域内一个都放不下 */
 export function diatonicChordOptions(
 	range: number[],
 	key: KeyId,
-	inversions: ChordInversion[]
-): { degree: number; inversion: ChordInversion }[] {
+	inversions: ChordInversion[],
+	sizes: DiatonicChordSize[]
+): { degree: number; size: DiatonicChordSize; inversion: ChordInversion }[] {
 	const degrees = scaleDegrees(key);
 	const pool = diatonicPool(range, key);
-	const options: { degree: number; inversion: ChordInversion }[] = [];
+	const options: {
+		degree: number;
+		size: DiatonicChordSize;
+		inversion: ChordInversion;
+	}[] = [];
 	for (let degree = 0; degree < 7; degree++) {
-		const structure = CHORD_STRUCTURES[diatonicTriadType(key, degree)];
-		const roots = pool.filter(
-			(midi) => ((midi % 12) + 12) % 12 === degrees[degree].pc
-		);
-		const usable = inversions.filter((i) => i < structure.length);
-		// 所选转位对该和弦都不适用（如只剩第三转位但音级上只放得下三和弦）时回退原位
-		const effective: ChordInversion[] = usable.length > 0 ? usable : [0];
-		for (const inversion of effective) {
-			const { bassOffset, topOffset } = chordSpan(structure, inversion);
-			if (
-				roots.some(
-					(midi) =>
-						midi + bassOffset >= range[0] && midi + topOffset <= range[1]
-				)
-			) {
-				options.push({ degree, inversion });
+		for (const size of sizes) {
+			const structure = CHORD_STRUCTURES[diatonicChordType(key, degree, size)];
+			const roots = pool.filter(
+				(midi) => ((midi % 12) + 12) % 12 === degrees[degree].pc
+			);
+			const usable = inversions.filter((i) => i < structure.length);
+			// 所选转位对该和弦都不适用（如只剩第三转位但只选了三和弦）时回退原位
+			const effective: ChordInversion[] = usable.length > 0 ? usable : [0];
+			for (const inversion of effective) {
+				const { bassOffset, topOffset } = chordSpan(structure, inversion);
+				if (
+					roots.some(
+						(midi) =>
+							midi + bassOffset >= range[0] && midi + topOffset <= range[1]
+					)
+				) {
+					options.push({ degree, size, inversion });
+				}
 			}
 		}
 	}

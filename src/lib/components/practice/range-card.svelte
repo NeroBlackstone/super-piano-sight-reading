@@ -3,6 +3,10 @@ import { Piano } from '@lucide/svelte';
 import { Button } from '#lib/components/ui/button/index.js';
 import * as Card from '#lib/components/ui/card/index.js';
 import { Slider } from '#lib/components/ui/slider/index.js';
+import {
+	ToggleGroup,
+	ToggleGroupItem
+} from '#lib/components/ui/toggle-group/index.js';
 import { m } from '#lib/paraglide/messages.js';
 import {
 	KEYBOARD_MAX,
@@ -46,9 +50,17 @@ const isQuickActive = (value: number[]) =>
 const quickActive = () =>
 	rangeQuickPresets.some((preset) => isQuickActive(preset.value));
 
+// 受控 value：音域被滑块或八度按钮改动后，没有任何预设处于选中态
+const activeQuickPresetId = () =>
+	rangeQuickPresets.find((preset) => isQuickActive(preset.value))?.id ?? '';
+
 const applyQuickPreset = (value: number[]) => {
 	config.range = [...value];
 };
+
+// shadcn 默认选中态 bg-muted 偏淡，选中时改为 primary 实底反色文字
+const activeItemClass =
+	'data-[state=on]:bg-primary data-[state=on]:text-primary-foreground data-[state=on]:hover:bg-primary/90 data-[state=on]:hover:text-primary-foreground';
 
 // 八度被视作选中：无快捷预设生效，且该八度完全落在当前音域内
 const isOctaveActive = (value: number[]) =>
@@ -187,23 +199,23 @@ const toggleOctave = (preset: { id: string; value: number[] }) => {
 		</div>
 
 		<div class="mt-3 flex flex-wrap items-center gap-2">
-			<span class="text-xs font-medium text-muted-foreground"
-				>{m.rangePresets()}</span
+			<span class="text-sm font-medium">{m.rangePresets()}</span>
+			<ToggleGroup
+				type="single"
+				value={activeQuickPresetId()}
+				onValueChange={(id) => {
+					const preset = rangeQuickPresets.find((it) => it.id === id);
+					if (preset) applyQuickPreset(preset.value);
+				}}
+				variant="outline"
+				size="sm"
 			>
-			{#each rangeQuickPresets as preset (preset.id)}
-				<Button
-					type="button"
-					variant="outline"
-					size="sm"
-					aria-pressed={isQuickActive(preset.value)}
-					onclick={() => applyQuickPreset(preset.value)}
-					class="rounded-full {isQuickActive(preset.value)
-						? 'border-primary bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground'
-						: ''}"
-				>
-					{preset.label()}
-				</Button>
-			{/each}
+				{#each rangeQuickPresets as preset (preset.id)}
+					<ToggleGroupItem value={preset.id} class={activeItemClass}>
+						{preset.label()}
+					</ToggleGroupItem>
+				{/each}
+			</ToggleGroup>
 		</div>
 	</Card.Content>
 </Card.Root>

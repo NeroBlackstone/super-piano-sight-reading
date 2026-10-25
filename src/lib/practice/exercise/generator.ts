@@ -23,8 +23,8 @@ import {
 	CHORD_STRUCTURES,
 	chordSpan,
 	diatonicChordOptions,
+	diatonicChordType,
 	diatonicPool,
-	diatonicTriadType,
 	KEY_ALTERATIONS,
 	LETTERS,
 	NATURAL_PC,
@@ -198,16 +198,20 @@ function makeIntervalSource(
 	};
 }
 
-/** 顺阶三和弦类型 → 和弦代号后缀（大调顺阶只有大 / 小 / 减三种） */
-const DIATONIC_TRIAD_SUFFIX: Partial<Record<ChordTypeId, string>> = {
+/** 顺阶和弦类型 → 和弦代号后缀（大调顺阶三和弦只有大 / 小 / 减，七和弦只有大七 / 属七 / 小七 / 半减七） */
+const DIATONIC_CHORD_SUFFIX: Partial<Record<ChordTypeId, string>> = {
 	major: '',
 	minor: 'm',
-	diminished: 'dim'
+	diminished: 'dim',
+	maj7: 'maj7',
+	dom7: '7',
+	min7: 'm7',
+	halfDim7: 'm7b5'
 };
 
 /**
  * 分解和弦模式：每次连续取音构成一个完整和弦（自低音起逐音输出，跨小节延续）。
- * 顺阶来源：用调内各级三和弦，类型由调号决定，音级 × 转位在放得下的组合里随机；
+ * 顺阶来源：用调内各级三和弦 / 七和弦（所选结构），类型由调号决定，音级 × 结构 × 转位在放得下的组合里随机；
  * 自定义来源：类型与转位在所选集合内随机，超出和弦音数的转位（如三和弦的第三转位）回退为原位。
  * 和弦整体必须落在音域内：找不到放得下的和弦时退回半音随机单音。休止符不消耗和弦音。
  */
@@ -260,19 +264,20 @@ function makeChordSource(
 		return settings.direction === 'up' ? pitches : pitches.reverse();
 	}
 
-	/** 顺阶：第 degree 音级上的三和弦，根音取该音级在音域内放得下的八度位置 */
+	/** 顺阶：第 degree 音级上按所选结构的和弦，根音取该音级在音域内放得下的八度位置 */
 	function nextDiatonicChord(): SpelledPitch[] {
 		const options = diatonicChordOptions(
 			config.range,
 			key,
-			settings.inversions
+			settings.inversions,
+			settings.diatonicSizes
 		);
 		if (options.length === 0) {
-			// 音域内放不下任何（音级 × 转位）组合：退回半音随机单音
+			// 音域内放不下任何（音级 × 结构 × 转位）组合：退回半音随机单音
 			return [randomChromaticNote()];
 		}
-		const { degree, inversion } = pick(options, rng);
-		const type = diatonicTriadType(key, degree);
+		const { degree, size, inversion } = pick(options, rng);
+		const type = diatonicChordType(key, degree, size);
 		const structure = CHORD_STRUCTURES[type];
 		const { bassOffset, topOffset } = chordSpan(structure, inversion);
 		const roots = pool.filter(
@@ -290,7 +295,7 @@ function makeChordSource(
 		// 和弦代号标在第一个发音的音上（上行 = 和弦低音，下行 = 和弦高音）；
 		// 根音拼写沿用调号音级（字母 + 升降），如 F 大调第 4 级 → 'Bb'
 		const rootDegree = degrees[degree];
-		pitches[0].chordSymbol = `${LETTERS[rootDegree.letterIndex].toUpperCase()}${ACC_SUFFIX[rootDegree.alteration]}${DIATONIC_TRIAD_SUFFIX[type] ?? ''}`;
+		pitches[0].chordSymbol = `${LETTERS[rootDegree.letterIndex].toUpperCase()}${ACC_SUFFIX[rootDegree.alteration]}${DIATONIC_CHORD_SUFFIX[type] ?? ''}`;
 		return pitches;
 	}
 

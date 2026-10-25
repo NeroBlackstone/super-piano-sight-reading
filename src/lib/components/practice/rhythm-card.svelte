@@ -5,6 +5,7 @@ import * as Card from '#lib/components/ui/card/index.js';
 import { Checkbox } from '#lib/components/ui/checkbox/index.js';
 import { Separator } from '#lib/components/ui/separator/index.js';
 import { Slider } from '#lib/components/ui/slider/index.js';
+import { Switch } from '#lib/components/ui/switch/index.js';
 import {
 	ToggleGroup,
 	ToggleGroupItem
@@ -26,6 +27,10 @@ import {
 
 let { config }: { config: PracticeConfig } = $props();
 
+// shadcn 默认选中态 bg-muted 偏淡，选中时改为 primary 实底反色文字
+const activeItemClass =
+	'data-[state=on]:bg-primary data-[state=on]:text-primary-foreground data-[state=on]:hover:bg-primary/90 data-[state=on]:hover:text-primary-foreground';
+
 const beatUnit = $derived(beatUnitFor(config.timeSignature));
 
 // 已选时值（保持固定顺序），附点勾选框逐一对应
@@ -37,6 +42,12 @@ function toggleDot(id: Duration, checked: boolean) {
 	config.dots.durations = checked
 		? [...config.dots.durations, id]
 		: config.dots.durations.filter((d) => d !== id);
+}
+
+function toggleDuration(id: Duration, checked: boolean) {
+	config.durations = checked
+		? [...config.durations, id]
+		: config.durations.filter((d) => d !== id);
 }
 
 // 取消勾选时值（或拍号切换重置时值）时同步移除其附点勾选，保持 dots.durations ⊆ durations
@@ -59,14 +70,13 @@ $effect(() => {
 		<Card.Description>{m.rhythmDescription()}</Card.Description>
 	</Card.Header>
 	<Card.Content class="flex flex-col gap-4">
-		<fieldset>
-			<legend class="mb-2 text-sm font-medium">{m.timeSigLegend()}</legend>
+		<div class="flex flex-wrap items-center gap-2">
+			<span class="text-sm font-medium">{m.timeSigLegend()}</span>
 			<ToggleGroup
 				type="single"
 				bind:value={config.timeSignature}
 				variant="outline"
-				spacing={2}
-				class="flex w-full flex-wrap gap-2"
+				size="sm"
 			>
 				{#each timeSignatureOptions as option (option.id)}
 					<Tooltip.Root>
@@ -75,8 +85,7 @@ $effect(() => {
 								<ToggleGroupItem
 									{...props}
 									value={option.id}
-									size="sm"
-									class="h-9 min-w-12 rounded-full px-3.5 tabular-nums data-[state=on]:border-primary! data-[state=on]:bg-primary! data-[state=on]:text-primary-foreground!"
+									class="min-w-12 tabular-nums {activeItemClass}"
 								>
 									{option.label}
 								</ToggleGroupItem>
@@ -86,7 +95,7 @@ $effect(() => {
 					</Tooltip.Root>
 				{/each}
 			</ToggleGroup>
-		</fieldset>
+		</div>
 
 		<fieldset>
 			<div class="mb-2 flex items-baseline justify-between">
@@ -118,23 +127,22 @@ $effect(() => {
 
 		<fieldset>
 			<legend class="mb-2 text-sm font-medium">{m.durationsLegend()}</legend>
-			<ToggleGroup
-				type="multiple"
-				bind:value={config.durations}
-				variant="outline"
-				spacing={2}
-				class="flex w-full flex-wrap gap-2"
-			>
+			<div class="flex w-full flex-wrap items-center gap-x-5 gap-y-2">
 				{#each durationOptions as option (option.id)}
-					<ToggleGroupItem
-						value={option.id}
-						size="sm"
-						class="h-9 rounded-full px-3.5 data-[state=on]:border-primary! data-[state=on]:bg-primary! data-[state=on]:text-primary-foreground!"
+					<label
+						for="duration-{option.id}"
+						class="flex cursor-pointer items-center gap-2 text-sm"
 					>
+						<Checkbox
+							id="duration-{option.id}"
+							checked={config.durations.includes(option.id)}
+							onCheckedChange={(checked) =>
+								toggleDuration(option.id, checked === true)}
+						/>
 						{option.label()}
-					</ToggleGroupItem>
+					</label>
 				{/each}
-			</ToggleGroup>
+			</div>
 			{#if config.durations.length === 0}
 				<p class="mt-2 text-xs text-destructive">{m.durationsRequired()}</p>
 			{:else}
@@ -184,22 +192,19 @@ $effect(() => {
 				{/if}
 
 				<!-- 生成频率自然化：按权重抽取已选时值，避免等比例 -->
-				<div class="mt-4">
-					<label
-						for="naturalize-durations"
-						class="flex cursor-pointer items-center gap-2 text-sm"
-					>
-						<Checkbox
-							id="naturalize-durations"
-							checked={config.naturalizeDurations}
-							onCheckedChange={(checked) =>
-								(config.naturalizeDurations = checked === true)}
-						/>
-						{m.durationsNaturalizeLabel()}
-					</label>
-					<p class="mt-1.5 text-xs text-muted-foreground">
-						{m.durationsNaturalizeDesc()}
-					</p>
+				<div class="mt-4 flex items-center justify-between gap-4">
+					<div class="space-y-0.5">
+						<label for="naturalize-durations" class="text-sm font-medium">
+							{m.durationsNaturalizeLabel()}
+						</label>
+						<p class="text-xs text-muted-foreground">
+							{m.durationsNaturalizeDesc()}
+						</p>
+					</div>
+					<Switch
+						id="naturalize-durations"
+						bind:checked={config.naturalizeDurations}
+					/>
 				</div>
 			{/if}
 		</fieldset>

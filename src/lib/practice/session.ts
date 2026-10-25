@@ -43,6 +43,7 @@ function isValidShape(parsed: PracticeConfig): boolean {
 		Array.isArray(parsed.melody?.intervals) &&
 		['diatonic', 'custom'].includes(parsed.melody?.chord?.source) &&
 		Array.isArray(parsed.melody?.chord?.types) &&
+		Array.isArray(parsed.melody?.chord?.diatonicSizes) &&
 		Array.isArray(parsed.melody?.chord?.inversions) &&
 		(parsed.melody?.chord?.direction === 'up' ||
 			parsed.melody?.chord?.direction === 'down') &&

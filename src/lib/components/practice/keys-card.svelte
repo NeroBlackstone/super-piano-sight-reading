@@ -13,6 +13,10 @@ import { keyOptions } from '#lib/practice/options.js';
 
 let { config }: { config: PracticeConfig } = $props();
 
+// shadcn 默认选中态 bg-muted 偏淡，选中时改为 primary 实底反色文字
+const activeItemClass =
+	'data-[state=on]:bg-primary data-[state=on]:text-primary-foreground data-[state=on]:hover:bg-primary/90 data-[state=on]:hover:text-primary-foreground';
+
 // bits-ui 单选组再次点击会把值清空成 ''，这里直接驳回，调号必选
 function changeKey(value: string) {
 	if (keyOptions.some((option) => option.id === value)) {
@@ -30,15 +34,14 @@ function changeKey(value: string) {
 		<Card.Description>{m.keysDescription()}</Card.Description>
 	</Card.Header>
 	<Card.Content class="flex flex-col gap-4">
-		<fieldset>
-			<legend class="mb-2 text-sm font-medium">{m.keysTitle()}</legend>
+		<div class="flex flex-wrap items-center gap-2">
+			<span class="text-sm font-medium">{m.keysLegend()}</span>
 			<ToggleGroup
 				type="single"
 				value={config.key}
 				onValueChange={changeKey}
 				variant="outline"
-				spacing={2}
-				class="flex w-full flex-wrap gap-2"
+				size="sm"
 			>
 				{#each keyOptions as option (option.id)}
 					<Tooltip.Root>
@@ -47,8 +50,7 @@ function changeKey(value: string) {
 								<ToggleGroupItem
 									{...props}
 									value={option.id}
-									size="sm"
-									class="h-9 min-w-12 rounded-full px-3.5 data-[state=on]:border-primary! data-[state=on]:bg-primary! data-[state=on]:text-primary-foreground!"
+									class="min-w-12 {activeItemClass}"
 								>
 									{option.label}
 								</ToggleGroupItem>
@@ -60,7 +62,7 @@ function changeKey(value: string) {
 					</Tooltip.Root>
 				{/each}
 			</ToggleGroup>
-		</fieldset>
+		</div>
 
 		<div class="mt-1">
 			<!-- 音程 / 分解和弦模式下临时变音记号不生效：置灰并说明，开关值原样保留 -->
