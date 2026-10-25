@@ -55,6 +55,8 @@ export interface PracticeConfig {
 	tempo: number;
 	/** 时值多选，至少 1 个 */
 	durations: Duration[];
+	/** 生成频率自然化：按固定权重抽取已选时值，而非等比例 */
+	naturalizeDurations: boolean;
 	/** 休止符 */
 	rests: OptionalFeature;
 	/** 临时变音记号 */
@@ -89,6 +91,7 @@ export function createDefaultConfig(): PracticeConfig {
 		timeSignature: '4/4',
 		tempo: 72,
 		durations: ['quarter'],
+		naturalizeDurations: false,
 		rests: { enabled: true, probability: 0.15 },
 		accidentals: { enabled: false, probability: 0.05 },
 		dots: { durations: [], probability: 0.15 },

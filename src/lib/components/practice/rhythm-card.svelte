@@ -182,6 +182,25 @@ $effect(() => {
 						</p>
 					</div>
 				{/if}
+
+				<!-- 生成频率自然化：按权重抽取已选时值，避免等比例 -->
+				<div class="mt-4">
+					<label
+						for="naturalize-durations"
+						class="flex cursor-pointer items-center gap-2 text-sm"
+					>
+						<Checkbox
+							id="naturalize-durations"
+							checked={config.naturalizeDurations}
+							onCheckedChange={(checked) =>
+								(config.naturalizeDurations = checked === true)}
+						/>
+						{m.durationsNaturalizeLabel()}
+					</label>
+					<p class="mt-1.5 text-xs text-muted-foreground">
+						{m.durationsNaturalizeDesc()}
+					</p>
+				</div>
 			{/if}
 		</fieldset>
 

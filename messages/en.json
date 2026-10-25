@@ -20,6 +20,8 @@
 	"durationsEighth": "Eighth",
 	"durationsHalf": "Half",
 	"durationsLegend": "Note durations (multi-select)",
+	"durationsNaturalizeDesc": "Draws selected durations with weighted ratios — eighth 37%, sixteenth 26%, quarter 20%, others share 17% — instead of equal odds. Dots multiply on top of the duration's ratio.",
+	"durationsNaturalizeLabel": "Naturalize frequency",
 	"durationsNone": "None selected",
 	"durationsQuarter": "Quarter",
 	"durationsRequired": "Select at least one duration.",

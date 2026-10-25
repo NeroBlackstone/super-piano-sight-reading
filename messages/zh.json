@@ -20,6 +20,8 @@
 	"durationsEighth": "八分",
 	"durationsHalf": "二分",
 	"durationsLegend": "出现的音符时值（可多选）",
+	"durationsNaturalizeDesc": "按加权比例抽取已选时值：八分 37%、十六分 26%、四分 20%、其他时值合计 17%，避免等比例生成；附点概率在时值比例上再相乘。",
+	"durationsNaturalizeLabel": "生成频率自然化",
 	"durationsNone": "未选择",
 	"durationsQuarter": "四分",
 	"durationsRequired": "请至少选择一个时值。",

@@ -25,7 +25,7 @@ import {
 	scaleDegrees,
 	spell
 } from './pitch.js';
-import { pick } from './rng.js';
+import { pick, weightedPick } from './rng.js';
 import { tripletCrossesBeat } from './two-level-rule.js';
 
 /** 休止符在谱表上的默认位置 */
@@ -33,6 +33,28 @@ const REST_KEYS: Record<Clef, string> = {
 	treble: 'b/4',
 	bass: 'd/3'
 };
+
+/** 生成频率自然化的权重（%）：八分 37、十六分 26、四分 20 */
+const NATURAL_DURATION_WEIGHTS: Record<Duration, number> = {
+	eighth: 37,
+	sixteenth: 26,
+	quarter: 20,
+	whole: 0,
+	half: 0
+};
+
+/** 权重表之外的时值（全音符、二分音符）合计分享的份额 */
+const OTHER_DURATION_WEIGHT = 17;
+
+/**
+ * 自然化权重：命名时值取自身权重，其余时值均分"其他"份额；
+ * 只对当前放得下的候选计算，剩余空间不足时比例在候选内重新分配。
+ */
+function naturalWeights(candidates: Duration[]): number[] {
+	const others = candidates.filter((d) => NATURAL_DURATION_WEIGHTS[d] === 0);
+	const shared = others.length > 0 ? OTHER_DURATION_WEIGHT / others.length : 0;
+	return candidates.map((d) => NATURAL_DURATION_WEIGHTS[d] || shared);
+}
 
 /** 随机取一个调内音（临时变音记号特性照常叠加在调内音上） */
 function randomNoteEvent(
@@ -192,7 +214,9 @@ function fillMeasure(
 			events.push(...fillWithRests(config, key, left, rng));
 			break;
 		}
-		const duration = pick(candidates, rng);
+		const duration = config.naturalizeDurations
+			? weightedPick(candidates, naturalWeights(candidates), rng)
+			: pick(candidates, rng);
 		let dots = false;
 		let triplet = false;
 		let cost = UNITS[duration];

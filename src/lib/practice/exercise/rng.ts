@@ -14,3 +14,18 @@ export function mulberry32(seed: number): () => number {
 export function pick<T>(items: readonly T[], rng: () => number): T {
 	return items[Math.floor(rng() * items.length)];
 }
+
+/** 按权重随机取一个元素（weights 与 items 一一对应，非负） */
+export function weightedPick<T>(
+	items: readonly T[],
+	weights: readonly number[],
+	rng: () => number
+): T {
+	const total = weights.reduce((sum, weight) => sum + weight, 0);
+	let roll = rng() * total;
+	for (let i = 0; i < items.length; i++) {
+		roll -= weights[i];
+		if (roll < 0) return items[i];
+	}
+	return items[items.length - 1];
+}

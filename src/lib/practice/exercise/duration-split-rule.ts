@@ -2,20 +2,12 @@
  * 音符时值拆分规则（拍点对齐）：纯记谱层变换，不改演奏内容。
  */
 import type { TimeSignature } from '../config.js';
-import { eventCost, type NoteEvent } from './event.js';
+import { BEAT_UNITS, eventCost, type NoteEvent } from './event.js';
 import { snapToGrid, splitNoteUnits } from './two-level-rule.js';
-
-/** 一拍的占时（十六分单位）：/4 拍为四分音符，6/8 为附点四分音符 */
-const BEAT_UNITS: Record<TimeSignature, number> = {
-	'4/4': 4,
-	'3/4': 4,
-	'2/4': 4,
-	'6/8': 6
-};
 
 /**
  * 音符时值拆分规则（纯记谱层变换，不改演奏内容）：
- * 时值大于一拍的音符必须从拍点开始，否则在下一个拍点处拆开——
+ * 时值大于等于一拍的音符必须从拍点开始，否则在下一个拍点处拆开——
  * 音符各段依次连音线相连（tieToNext），休止符直接断开（休止符从不连线）。
  * 拆出的首段短于一拍、末段从拍点开始，均自然满足本规则。
  * 三连音不在十六分网格上，不在此处理（与两等级规则一致）。
@@ -40,8 +32,8 @@ export function applyDurationSplitRule(
 			continue;
 		}
 
-		// 大于一拍且不从拍点开始：下一个拍点必在区间内（到拍点的距离短于一拍）
-		if (cost > beat && position % beat !== 0) {
+		// 大于等于一拍且不从拍点开始：下一个拍点必在区间内（到拍点的距离短于一拍）
+		if (cost >= beat && position % beat !== 0) {
 			const cut = Math.ceil(position / beat) * beat;
 			const bounds = [position, cut, position + cost];
 			const parts: NoteEvent[] = [];

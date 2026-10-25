@@ -4,6 +4,7 @@ import type { EasyScore, Factory, StemmableNote, Voice } from 'vexflow';
 import type { TimeSignature } from '#lib/practice/config.js';
 import {
 	applyDurationSplitRule,
+	applyRestGroupingRule,
 	applyTwoLevelRule,
 	type Exercise,
 	eventCost,
@@ -158,10 +159,15 @@ function buildVoice(
 	measure: NoteEvent[],
 	exercise: Exercise
 ): Voice {
-	// 记谱层变换（不改演奏内容）：先按时值拆分规则把不在拍点上的长音拆开，
-	// 再由两等级规则断开跨必标拍点的音符（其切点都落在拍点上，不会破坏前一步）
-	const events = applyTwoLevelRule(
-		applyDurationSplitRule(measure, exercise.timeSignature),
+	// 记谱层变换（不改演奏内容）：先按时值拆分规则把不在拍点上的一拍及以上音符拆开，
+	// 再由两等级规则断开跨必标拍点的音符（其切点都落在拍点上，不会破坏前一步），
+	// 最后把连续休止符按拍点重新编组，每个休止符都不跨节拍
+	// （休止符从不连线，重组不改动任何音符，不会破坏前两步）
+	const events = applyRestGroupingRule(
+		applyTwoLevelRule(
+			applyDurationSplitRule(measure, exercise.timeSignature),
+			exercise.timeSignature
+		),
 		exercise.timeSignature
 	);
 	const notes = score.notes(toEasyScoreLine(events));
@@ -181,7 +187,9 @@ function buildVoice(
 
 	const beatUnits = beatUnitsFor(exercise.timeSignature);
 	for (const run of beamRuns(events, notes, beatUnits)) {
-		score.beam(run);
+		// autoStem 按整组平均音高统一符干方向，符杠整体在音符上方或下方；
+		// 缺省时逐音定向，高低音同组会导致符杠横在音符中间
+		score.beam(run, { autoStem: true });
 	}
 
 	// 拆分产生的连音线：tieToNext 的相邻两音成对画线（经 Factory 进入 renderQ 统一绘制）

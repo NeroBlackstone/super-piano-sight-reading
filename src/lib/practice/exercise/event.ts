@@ -49,6 +49,14 @@ export const MEASURE_CAPACITY: Record<TimeSignature, number> = {
 	'6/8': 12
 };
 
+/** 一拍的占时（十六分单位）：/4 拍为四分音符，6/8 为附点四分音符 */
+export const BEAT_UNITS: Record<TimeSignature, number> = {
+	'4/4': 4,
+	'3/4': 4,
+	'2/4': 4,
+	'6/8': 6
+};
+
 /** 事件的实际占时（十六分音符单位，含附点 / 三连音修正） */
 export function eventCost(event: NoteEvent): number {
 	const base = UNITS[event.duration];
