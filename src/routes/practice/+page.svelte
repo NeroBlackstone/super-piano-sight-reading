@@ -10,7 +10,7 @@ import {
 	type Exercise,
 	generateExercise,
 	mulberry32
-} from '#lib/practice/exercise.js';
+} from '#lib/practice/exercise/index.js';
 import {
 	beatUnitFor,
 	keyLabels,

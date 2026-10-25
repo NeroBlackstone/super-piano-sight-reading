@@ -1,12 +1,16 @@
 <script lang="ts">
 import { onMount } from 'svelte';
-import type { EasyScore, StemmableNote, Voice } from 'vexflow';
+import type { EasyScore, Factory, StemmableNote, Voice } from 'vexflow';
 import type { TimeSignature } from '#lib/practice/config.js';
 import {
+	applyDurationSplitRule,
+	applyTwoLevelRule,
 	type Exercise,
+	eventCost,
 	type NoteEvent,
+	snapToGrid,
 	UNITS
-} from '#lib/practice/exercise.js';
+} from '#lib/practice/exercise/index.js';
 
 let { exercise }: { exercise: Exercise } = $props();
 
@@ -63,14 +67,6 @@ function chunk<T>(items: T[], size: number): T[][] {
 	return rows;
 }
 
-/** 事件的实际占时（十六分音符单位，含附点 / 三连音修正） */
-function eventCost(event: NoteEvent): number {
-	const base = UNITS[event.duration];
-	if (event.triplet) return (base * 2) / 3;
-	if (event.dots) return base * 1.5;
-	return base;
-}
-
 /** 符杠分组的拍长：/4 拍按四分音符，6/8 按附点四分音符 */
 function beatUnitsFor(timeSignature: TimeSignature): number {
 	return timeSignature === '6/8' ? 6 : 4;
@@ -115,7 +111,7 @@ function draw(
 				width: staveWidth
 			});
 
-			const voice = buildVoice(vf, score, measure, exercise);
+			const voice = buildVoice(factory, score, measure, exercise);
 			// 临时记号交给 VexFlow 决定：对照调号 + 小节内上下文，该画的画、重复的删
 			vf.Accidental.applyAccidentals([voice], exercise.key);
 
@@ -157,18 +153,24 @@ function toEasyScoreLine(measure: NoteEvent[]): string {
 }
 
 function buildVoice(
-	vf: VexFlowModule,
+	factory: Factory,
 	score: EasyScore,
 	measure: NoteEvent[],
 	exercise: Exercise
 ): Voice {
-	const notes = score.notes(toEasyScoreLine(measure));
+	// 记谱层变换（不改演奏内容）：先按时值拆分规则把不在拍点上的长音拆开，
+	// 再由两等级规则断开跨必标拍点的音符（其切点都落在拍点上，不会破坏前一步）
+	const events = applyTwoLevelRule(
+		applyDurationSplitRule(measure, exercise.timeSignature),
+		exercise.timeSignature
+	);
+	const notes = score.notes(toEasyScoreLine(events));
 
 	// 生成器保证三连音是连续 3 个同质事件；
 	// 用 triplet 的起始边沿定位组首（前一个事件非三连音，或已在小节开头）
-	for (let j = 0; j < measure.length; j++) {
+	for (let j = 0; j < events.length; j++) {
 		const startsTriplet =
-			measure[j].triplet && (j === 0 || !measure[j - 1].triplet);
+			events[j].triplet && (j === 0 || !events[j - 1].triplet);
 		if (startsTriplet) {
 			score.tuplet(notes.slice(j, j + 3), {
 				numNotes: 3,
@@ -178,8 +180,15 @@ function buildVoice(
 	}
 
 	const beatUnits = beatUnitsFor(exercise.timeSignature);
-	for (const run of beamRuns(measure, notes, beatUnits)) {
+	for (const run of beamRuns(events, notes, beatUnits)) {
 		score.beam(run);
+	}
+
+	// 拆分产生的连音线：tieToNext 的相邻两音成对画线（经 Factory 进入 renderQ 统一绘制）
+	for (let j = 0; j + 1 < events.length; j++) {
+		if (events[j].tieToNext) {
+			factory.StaveTie({ from: notes[j], to: notes[j + 1] });
+		}
 	}
 
 	return score.voice(notes);
@@ -222,15 +231,19 @@ function beamRuns(
 			(event.triplet === runTriplet &&
 				Math.floor(start / beatUnits) === Math.floor(runStart / beatUnits));
 
-		if (!beamed || crossesBeat || !sameGroup) {
-			flush();
-			runTriplet = event.triplet;
-			runStart = start;
-			if (beamed && !crossesBeat) run.push(notes[i]);
-		} else {
+		if (!beamed || crossesBeat || !sameGroup) flush();
+
+		if (beamed && !crossesBeat) {
+			// 起新组时记录组首的拍位与三连音属性；否则上一组（或不可连杠
+			// 音符）的旧值会把同拍的后续音符误判成跨拍而反复拆组
+			if (run.length === 0) {
+				runTriplet = event.triplet;
+				runStart = start;
+			}
 			run.push(notes[i]);
 		}
-		start += cost;
+		// 三连音占时的浮点残差吸附回整数网格，否则拍点上的音符会被误判为跨拍
+		start = snapToGrid(start + cost);
 	}
 	flush();
 	return runs;

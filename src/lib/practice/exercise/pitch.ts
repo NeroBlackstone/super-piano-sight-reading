@@ -1,0 +1,106 @@
+/**
+ * 音高拼写：MIDI → 音名（按调号选择等音拼写）。
+ */
+import type { KeyId } from '../config.js';
+
+export const LETTERS = ['c', 'd', 'e', 'f', 'g', 'a', 'b'] as const;
+/** 各音名的本位音级（半音数） */
+export const NATURAL_PC = [0, 2, 4, 5, 7, 9, 11];
+
+/** 大调调号中被升降的字母（相对本位音级） */
+export const KEY_ALTERATIONS: Record<KeyId, Record<string, number>> = {
+	C: {},
+	G: { f: 1 },
+	D: { f: 1, c: 1 },
+	A: { f: 1, c: 1, g: 1 },
+	E: { f: 1, c: 1, g: 1, d: 1 },
+	B: { f: 1, c: 1, g: 1, d: 1, a: 1 },
+	'F#': { f: 1, c: 1, g: 1, d: 1, a: 1, e: 1 },
+	'C#': { f: 1, c: 1, g: 1, d: 1, a: 1, e: 1, b: 1 },
+	F: { b: -1 },
+	Bb: { b: -1, e: -1 },
+	Eb: { b: -1, e: -1, a: -1 },
+	Ab: { b: -1, e: -1, a: -1, d: -1 }
+};
+
+/** 以降号为主的调：等音拼写平票时偏好降拼写 */
+const FLAT_KEYS: ReadonlySet<KeyId> = new Set(['F', 'Bb', 'Eb', 'Ab']);
+
+/** 各调根音在 LETTERS 中的下标 */
+const KEY_ROOT_INDEX: Record<KeyId, number> = {
+	C: 0,
+	G: 4,
+	D: 2,
+	A: 5,
+	E: 3,
+	B: 6,
+	'F#': 3,
+	'C#': 0,
+	F: 3,
+	Bb: 6,
+	Eb: 3,
+	Ab: 5
+};
+
+/** 调式 7 个音级（字母 + 相对本位音级的升降 + 半音数），顺序从根音起 */
+export function scaleDegrees(key: KeyId): {
+	letterIndex: number;
+	alteration: number;
+	pc: number;
+}[] {
+	const rootIndex = KEY_ROOT_INDEX[key];
+	const degrees = [];
+	for (let i = 0; i < 7; i++) {
+		const letterIndex = (rootIndex + i) % 7;
+		const letter = LETTERS[letterIndex];
+		const alteration = KEY_ALTERATIONS[key][letter] ?? 0;
+		const pc = (((NATURAL_PC[letterIndex] + alteration) % 12) + 12) % 12;
+		degrees.push({ letterIndex, alteration, pc });
+	}
+	return degrees;
+}
+
+/** 相对本位音级的升降 → VexFlow 音名后缀 */
+export const ACC_SUFFIX: Record<number, string> = {
+	'-2': 'bb',
+	'-1': 'b',
+	0: '',
+	1: '#',
+	2: '##'
+};
+
+interface Spelling {
+	letter: string;
+	/** 本位音级的半音数 */
+	naturalPc: number;
+	/** 相对本位音级的升降（-2..2） */
+	accidental: number;
+	octave: number;
+}
+
+/** 把 MIDI 音高按调号拼写成"音名 + 升降 + 八度"（取绝对值最小的常用拼写） */
+export function spell(midi: number, key: KeyId): Spelling {
+	const pc = ((midi % 12) + 12) % 12;
+	const preferFlat = FLAT_KEYS.has(key);
+	let best: Spelling | undefined;
+	let bestScore = Number.POSITIVE_INFINITY;
+	for (let i = 0; i < LETTERS.length; i++) {
+		// 所需升降折算到 [-6, 5]，再取绝对值最小的拼写
+		const diff = pc - NATURAL_PC[i];
+		const acc = ((((diff + 18) % 12) + 12) % 12) - 6;
+		// 平票时降号调偏好降拼写、升号调偏好升拼写
+		const score =
+			Math.abs(acc) * 2 +
+			(acc < 0 ? (preferFlat ? 0 : 1) : acc > 0 ? (preferFlat ? 1 : 0) : 0);
+		if (score < bestScore) {
+			bestScore = score;
+			best = {
+				letter: LETTERS[i],
+				naturalPc: NATURAL_PC[i],
+				accidental: acc,
+				octave: Math.floor((midi - NATURAL_PC[i] - acc) / 12) - 1
+			};
+		}
+	}
+	return best as Spelling;
+}

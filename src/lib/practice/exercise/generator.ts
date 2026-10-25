@@ -10,167 +10,23 @@ import type {
 	KeyId,
 	PracticeConfig,
 	TimeSignature
-} from './config.js';
-
-/** 一个音符 / 休止符事件 */
-export interface NoteEvent {
-	/** MIDI 音高；休止符为 null */
-	midi: number | null;
-	/** VexFlow 音名键，如 'c#/4'；休止符为该谱号的默认休止位置 */
-	vexKey: string;
-	/** 需要显示的临时记号；null 表示调号已覆盖（或休止符） */
-	accidental: '#' | 'b' | 'n' | null;
-	duration: Duration;
-	/** 是否附点 */
-	dots: boolean;
-	/** 是否三连音中的一个音（生成器保证连续 3 个同质事件） */
-	triplet: boolean;
-}
-
-/** 一道题：调号 / 谱号 / 拍号 / 速度 + 逐小节的事件序列 */
-export interface Exercise {
-	key: KeyId;
-	clef: Clef;
-	timeSignature: TimeSignature;
-	tempo: number;
-	measures: NoteEvent[][];
-}
-
-/** 十六分音符 = 1 个时值单位 */
-export const UNITS: Record<Duration, number> = {
-	whole: 16,
-	half: 8,
-	quarter: 4,
-	eighth: 2,
-	sixteenth: 1
-};
-
-/** 各拍号一小节的总容量（十六分音符单位） */
-const MEASURE_CAPACITY: Record<TimeSignature, number> = {
-	'4/4': 16,
-	'3/4': 12,
-	'2/4': 8,
-	'6/8': 12
-};
-
-/** mulberry32：可复现的轻量伪随机源 */
-export function mulberry32(seed: number): () => number {
-	let a = seed >>> 0;
-	return () => {
-		a = (a + 0x6d2b79f5) | 0;
-		let t = Math.imul(a ^ (a >>> 15), 1 | a);
-		t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-		return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-	};
-}
-
-// —— 音高拼写：MIDI → 音名（按调号选择等音拼写） ——
-
-const LETTERS = ['c', 'd', 'e', 'f', 'g', 'a', 'b'] as const;
-/** 各音名的本位音级（半音数） */
-const NATURAL_PC = [0, 2, 4, 5, 7, 9, 11];
-
-/** 大调调号中被升降的字母（相对本位音级） */
-const KEY_ALTERATIONS: Record<KeyId, Record<string, number>> = {
-	C: {},
-	G: { f: 1 },
-	D: { f: 1, c: 1 },
-	A: { f: 1, c: 1, g: 1 },
-	E: { f: 1, c: 1, g: 1, d: 1 },
-	B: { f: 1, c: 1, g: 1, d: 1, a: 1 },
-	'F#': { f: 1, c: 1, g: 1, d: 1, a: 1, e: 1 },
-	'C#': { f: 1, c: 1, g: 1, d: 1, a: 1, e: 1, b: 1 },
-	F: { b: -1 },
-	Bb: { b: -1, e: -1 },
-	Eb: { b: -1, e: -1, a: -1 },
-	Ab: { b: -1, e: -1, a: -1, d: -1 }
-};
-
-/** 以降号为主的调：等音拼写平票时偏好降拼写 */
-const FLAT_KEYS: ReadonlySet<KeyId> = new Set(['F', 'Bb', 'Eb', 'Ab']);
-
-/** 各调根音在 LETTERS 中的下标 */
-const KEY_ROOT_INDEX: Record<KeyId, number> = {
-	C: 0,
-	G: 4,
-	D: 2,
-	A: 5,
-	E: 3,
-	B: 6,
-	'F#': 3,
-	'C#': 0,
-	F: 3,
-	Bb: 6,
-	Eb: 3,
-	Ab: 5
-};
-
-/** 调式 7 个音级（字母 + 相对本位音级的升降 + 半音数），顺序从根音起 */
-function scaleDegrees(key: KeyId): {
-	letterIndex: number;
-	alteration: number;
-	pc: number;
-}[] {
-	const rootIndex = KEY_ROOT_INDEX[key];
-	const degrees = [];
-	for (let i = 0; i < 7; i++) {
-		const letterIndex = (rootIndex + i) % 7;
-		const letter = LETTERS[letterIndex];
-		const alteration = KEY_ALTERATIONS[key][letter] ?? 0;
-		const pc = (((NATURAL_PC[letterIndex] + alteration) % 12) + 12) % 12;
-		degrees.push({ letterIndex, alteration, pc });
-	}
-	return degrees;
-}
-
-/** 相对本位音级的升降 → VexFlow 音名后缀 */
-const ACC_SUFFIX: Record<number, string> = {
-	'-2': 'bb',
-	'-1': 'b',
-	0: '',
-	1: '#',
-	2: '##'
-};
-
-interface Spelling {
-	letter: string;
-	/** 本位音级的半音数 */
-	naturalPc: number;
-	/** 相对本位音级的升降（-2..2） */
-	accidental: number;
-	octave: number;
-}
-
-/** 把 MIDI 音高按调号拼写成"音名 + 升降 + 八度"（取绝对值最小的常用拼写） */
-function spell(midi: number, key: KeyId): Spelling {
-	const pc = ((midi % 12) + 12) % 12;
-	const preferFlat = FLAT_KEYS.has(key);
-	let best: Spelling | undefined;
-	let bestScore = Number.POSITIVE_INFINITY;
-	for (let i = 0; i < LETTERS.length; i++) {
-		// 所需升降折算到 [-6, 5]，再取绝对值最小的拼写
-		const diff = pc - NATURAL_PC[i];
-		const acc = ((((diff + 18) % 12) + 12) % 12) - 6;
-		// 平票时降号调偏好降拼写、升号调偏好升拼写
-		const score =
-			Math.abs(acc) * 2 +
-			(acc < 0 ? (preferFlat ? 0 : 1) : acc > 0 ? (preferFlat ? 1 : 0) : 0);
-		if (score < bestScore) {
-			bestScore = score;
-			best = {
-				letter: LETTERS[i],
-				naturalPc: NATURAL_PC[i],
-				accidental: acc,
-				octave: Math.floor((midi - NATURAL_PC[i] - acc) / 12) - 1
-			};
-		}
-	}
-	return best as Spelling;
-}
-
-function pick<T>(items: readonly T[], rng: () => number): T {
-	return items[Math.floor(rng() * items.length)];
-}
+} from '../config.js';
+import {
+	type Exercise,
+	MEASURE_CAPACITY,
+	type NoteEvent,
+	UNITS
+} from './event.js';
+import {
+	ACC_SUFFIX,
+	KEY_ALTERATIONS,
+	LETTERS,
+	NATURAL_PC,
+	scaleDegrees,
+	spell
+} from './pitch.js';
+import { pick } from './rng.js';
+import { tripletCrossesBeat } from './two-level-rule.js';
 
 /** 休止符在谱表上的默认位置 */
 const REST_KEYS: Record<Clef, string> = {
@@ -293,8 +149,32 @@ function fillWithRests(
 	return events;
 }
 
-/** 生成一个小节：按容量贪心填充音符 / 休止符 / 附点 / 三连音 */
+/**
+ * 生成一个小节：按容量贪心填充音符 / 休止符 / 附点 / 三连音。
+ * 三连音组无法在必标拍点处拆分，跨拍点的小节重新生成；
+ * 极端配置下反复冲突时放弃三连音重试（其余内容总能拆分，必能满足两等级规则）。
+ */
 function generateMeasure(
+	config: PracticeConfig,
+	key: KeyId,
+	timeSignature: TimeSignature,
+	rng: () => number
+): NoteEvent[] {
+	const capacity = MEASURE_CAPACITY[timeSignature];
+	for (let attempt = 0; attempt < 20; attempt++) {
+		const measure = fillMeasure(config, key, capacity, rng);
+		if (!tripletCrossesBeat(measure, timeSignature)) return measure;
+	}
+	return fillMeasure(
+		{ ...config, triplets: { ...config.triplets, enabled: false } },
+		key,
+		capacity,
+		rng
+	);
+}
+
+/** 生成一个小节内容：按容量贪心填充音符 / 休止符 / 附点 / 三连音 */
+function fillMeasure(
 	config: PracticeConfig,
 	key: KeyId,
 	capacity: number,
@@ -317,8 +197,10 @@ function generateMeasure(
 		let triplet = false;
 		let cost = UNITS[duration];
 
-		// 附点：仅勾选的时值生效；要求占时仍为整数单位且放得下（原型阶段不实现跨小节连音线）
+		// 附点：仅勾选的时值生效；要求占时仍为整数单位且放得下（原型阶段不实现跨小节连音线）。
+		// 十六分附点会引入半十六分（三十二分）网格，两等级规则无法在其上拆出拍点，不生成
 		if (
+			duration !== 'sixteenth' &&
 			config.dots.durations.includes(duration) &&
 			rng() < config.dots.probability
 		) {
@@ -359,10 +241,9 @@ export function generateExercise(
 	rng: () => number
 ): Exercise {
 	const key = pick(config.keys, rng);
-	const capacity = MEASURE_CAPACITY[config.timeSignature];
 	const measures: NoteEvent[][] = [];
 	for (let i = 0; i < config.measuresPerExercise; i++) {
-		measures.push(generateMeasure(config, key, capacity, rng));
+		measures.push(generateMeasure(config, key, config.timeSignature, rng));
 	}
 	return {
 		key,
