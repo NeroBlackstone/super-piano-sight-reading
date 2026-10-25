@@ -62,7 +62,7 @@ let { config }: { config: PracticeConfig } = $props();
 		</fieldset>
 
 		<div class="mt-1">
-			<!-- 音程模式下临时变音记号不生效：置灰并说明，开关值原样保留 -->
+			<!-- 音程 / 分解和弦模式下临时变音记号不生效：置灰并说明，开关值原样保留 -->
 			<ProbabilitySetting
 				id="accidentals"
 				label={m.accidentalsLabel()}
@@ -71,8 +71,8 @@ let { config }: { config: PracticeConfig } = $props();
 				probabilityDescription={m.accidentalsProbabilityDesc()}
 				ariaLabel={m.accidentalsAria()}
 				feature={config.accidentals}
-				disabled={config.melody.mode === 'interval'}
-				disabledHint={m.accidentalsUnavailableInIntervalMode()}
+				disabled={config.melody.mode !== 'random'}
+				disabledHint={m.accidentalsOnlyInRandomMode()}
 			/>
 		</div>
 	</Card.Content>

@@ -1,7 +1,7 @@
 /**
  * 音高拼写：MIDI → 音名（按调号选择等音拼写）。
  */
-import type { KeyId } from '../config.js';
+import type { ChordTypeId, KeyId } from '../config.js';
 
 export const LETTERS = ['c', 'd', 'e', 'f', 'g', 'a', 'b'] as const;
 /** 各音名的本位音级（半音数） */
@@ -79,6 +79,49 @@ export const ACC_SUFFIX: Record<number, string> = {
 	2: '##'
 };
 
+/** 各和弦类型根音到各和弦音的半音数（按三度叠置顺序，三和弦 3 个音、七和弦 4 个音） */
+export const CHORD_STRUCTURES: Record<ChordTypeId, number[]> = {
+	major: [0, 4, 7],
+	minor: [0, 3, 7],
+	diminished: [0, 3, 6],
+	augmented: [0, 4, 8],
+	dom7: [0, 4, 7, 10],
+	maj7: [0, 4, 7, 11],
+	min7: [0, 3, 7, 10],
+	halfDim7: [0, 3, 6, 10],
+	dim7: [0, 3, 6, 9]
+};
+
+/** 转位后低音（转位音）与最高音相对根音的半音偏移 */
+export function chordSpan(
+	structure: number[],
+	inversion: number
+): { bassOffset: number; topOffset: number } {
+	return {
+		bassOffset: structure[inversion],
+		topOffset:
+			inversion === 0
+				? structure[structure.length - 1]
+				: structure[inversion - 1] + 12
+	};
+}
+
+/** 该和弦（类型 + 转位）是否能在音域内以某调内音为根音完整放下 */
+export function chordFitsPool(
+	range: number[],
+	key: KeyId,
+	type: ChordTypeId,
+	inversion: number
+): boolean {
+	const { bassOffset, topOffset } = chordSpan(
+		CHORD_STRUCTURES[type],
+		inversion
+	);
+	return diatonicPool(range, key).some(
+		(midi) => midi + bassOffset >= range[0] && midi + topOffset <= range[1]
+	);
+}
+
 interface Spelling {
 	letter: string;
 	/** 本位音级的半音数 */
@@ -113,4 +156,19 @@ export function spell(midi: number, key: KeyId): Spelling {
 		}
 	}
 	return best as Spelling;
+}
+
+/**
+ * 按指定字母拼写 MIDI 音高：字母由调用方给出（分解和弦按三度叠置推字母，
+ * 保证谱面上是正确的三度叠置写法），只算出该字母所需的升降与八度。
+ */
+export function spellWithLetter(
+	midi: number,
+	letterIndex: number
+): { letter: string; acc: number; octave: number } {
+	const naturalPc = NATURAL_PC[letterIndex];
+	const diff = (((midi % 12) + 12) % 12) - naturalPc;
+	const acc = ((((diff + 18) % 12) + 12) % 12) - 6;
+	const octave = Math.floor((midi - naturalPc - acc) / 12) - 1;
+	return { letter: LETTERS[letterIndex], acc, octave };
 }

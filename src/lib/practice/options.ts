@@ -5,7 +5,14 @@
  * 音域预设）；可变状态一律由组件层持有，这里不存任何运行时状态。
  */
 import { m } from '#lib/paraglide/messages.js';
-import type { Duration, KeyId, TimeSignature } from '#lib/practice/config.js';
+import type {
+	ChordDirection,
+	ChordInversion,
+	ChordTypeId,
+	Duration,
+	KeyId,
+	TimeSignature
+} from '#lib/practice/config.js';
 
 export const LOCALE_NAMES: Record<string, string> = {
 	en: 'English',
@@ -63,6 +70,64 @@ export const intervalOptions: { id: number; label: () => string }[] = [
 export const intervalLabels: Record<number, () => string> = Object.fromEntries(
 	intervalOptions.map((option) => [option.id, option.label])
 );
+
+/** 和弦类型选项：三和弦 4 种（3 个音）+ 七和弦 5 种（4 个音），分解和弦模式下多选 */
+export const triadTypeOptions: { id: ChordTypeId; label: () => string }[] = [
+	{ id: 'major', label: () => m.chordTypeMajor() },
+	{ id: 'minor', label: () => m.chordTypeMinor() },
+	{ id: 'diminished', label: () => m.chordTypeDiminished() },
+	{ id: 'augmented', label: () => m.chordTypeAugmented() }
+];
+
+export const seventhTypeOptions: { id: ChordTypeId; label: () => string }[] = [
+	{ id: 'dom7', label: () => m.chordTypeDom7() },
+	{ id: 'maj7', label: () => m.chordTypeMaj7() },
+	{ id: 'min7', label: () => m.chordTypeMin7() },
+	{ id: 'halfDim7', label: () => m.chordTypeHalfDim7() },
+	{ id: 'dim7', label: () => m.chordTypeDim7() }
+];
+
+export const chordTypeOptions = [...triadTypeOptions, ...seventhTypeOptions];
+
+export const chordTypeLabels: Record<string, () => string> = Object.fromEntries(
+	chordTypeOptions.map((option) => [option.id, option.label] as const)
+);
+
+/** 七和弦类型集合：第三转位只对七和弦有意义 */
+export const SEVENTH_CHORD_TYPES: ReadonlySet<ChordTypeId> = new Set(
+	seventhTypeOptions.map((option) => option.id)
+);
+
+/** 转位选项：seventhOnly 标记仅七和弦可用的第三转位 */
+export const chordInversionOptions: {
+	id: ChordInversion;
+	label: () => string;
+	seventhOnly: boolean;
+}[] = [
+	{ id: 0, label: () => m.chordInversionRoot(), seventhOnly: false },
+	{ id: 1, label: () => m.chordInversionFirst(), seventhOnly: false },
+	{ id: 2, label: () => m.chordInversionSecond(), seventhOnly: false },
+	{ id: 3, label: () => m.chordInversionThird(), seventhOnly: true }
+];
+
+export const chordInversionLabels: Record<number, () => string> =
+	Object.fromEntries(
+		chordInversionOptions.map((option) => [option.id, option.label] as const)
+	);
+
+/** 分解和弦方向：上行自低音起，下行自高音起 */
+export const chordDirectionOptions: {
+	id: ChordDirection;
+	label: () => string;
+}[] = [
+	{ id: 'up', label: () => m.chordDirectionUp() },
+	{ id: 'down', label: () => m.chordDirectionDown() }
+];
+
+export const chordDirectionLabels: Record<string, () => string> =
+	Object.fromEntries(
+		chordDirectionOptions.map((option) => [option.id, option.label] as const)
+	);
 
 export const timeSignatureOptions: {
 	id: TimeSignature;

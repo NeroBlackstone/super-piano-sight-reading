@@ -39,7 +39,12 @@ function isValidShape(parsed: PracticeConfig): boolean {
 		parsed.durations.length > 0 &&
 		Array.isArray(parsed.range) &&
 		parsed.range.length === 2 &&
-		(parsed.melody?.mode === 'random' || parsed.melody?.mode === 'interval') &&
+		['random', 'interval', 'chord'].includes(parsed.melody?.mode) &&
+		Array.isArray(parsed.melody?.intervals) &&
+		Array.isArray(parsed.melody?.chord?.types) &&
+		Array.isArray(parsed.melody?.chord?.inversions) &&
+		(parsed.melody?.chord?.direction === 'up' ||
+			parsed.melody?.chord?.direction === 'down') &&
 		Array.isArray(parsed.dots?.durations)
 	);
 }

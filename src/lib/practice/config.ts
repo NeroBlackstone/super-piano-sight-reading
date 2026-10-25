@@ -36,14 +36,44 @@ export interface OptionalFeature {
 	probability: number;
 }
 
-/** 旋律生成方式：随机取音，或按所选音程从上一个音步进 */
-export type MelodyMode = 'random' | 'interval';
+/** 旋律生成方式：随机取音、按所选音程从上一个音步进，或连续分解和弦 */
+export type MelodyMode = 'random' | 'interval' | 'chord';
 
-/** 旋律进行：随机模式下每个音独立取；音程模式下相邻音按度数移动，临时变音记号不生效 */
+/** 和弦类型：三和弦 4 种 + 七和弦 5 种，半音结构见 exercise/pitch.ts */
+export type ChordTypeId =
+	| 'major'
+	| 'minor'
+	| 'diminished'
+	| 'augmented'
+	| 'dom7'
+	| 'maj7'
+	| 'min7'
+	| 'halfDim7'
+	| 'dim7';
+
+/** 和弦转位：0=原位，1=第一转位，2=第二转位，3=第三转位（仅七和弦） */
+export type ChordInversion = 0 | 1 | 2 | 3;
+
+/** 分解和弦方向 */
+export type ChordDirection = 'up' | 'down';
+
+/** 分解和弦模式设置 */
+export interface ChordSettings {
+	/** 允许的和弦类型（分解和弦模式下至少 1 个） */
+	types: ChordTypeId[];
+	/** 允许的转位（至少 1 个；和弦音数不够的转位不生效） */
+	inversions: ChordInversion[];
+	/** 上行或下行 */
+	direction: ChordDirection;
+}
+
+/** 旋律进行：随机模式下每个音独立取；音程模式下相邻音按度数移动；分解和弦模式逐音输出完整和弦。后两种模式临时变音记号均不生效 */
 export interface MelodySettings {
 	mode: MelodyMode;
 	/** 音程模式允许的度数：1=同度，2–8（音程模式下至少 1 个） */
 	intervals: number[];
+	/** 分解和弦模式设置 */
+	chord: ChordSettings;
 }
 
 /** 附点：只在勾选的时值上生效，未勾选的时值不出现附点版本 */
@@ -100,7 +130,11 @@ export function createDefaultConfig(): PracticeConfig {
 		clef: 'treble',
 		keys: ['C'],
 		range: [48, 72],
-		melody: { mode: 'random', intervals: [] },
+		melody: {
+			mode: 'random',
+			intervals: [],
+			chord: { types: ['major', 'minor'], inversions: [0], direction: 'up' }
+		},
 		timeSignature: '4/4',
 		tempo: 72,
 		durations: ['quarter'],

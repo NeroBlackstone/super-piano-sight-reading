@@ -19,12 +19,15 @@ import {
 } from './event.js';
 import {
 	ACC_SUFFIX,
+	CHORD_STRUCTURES,
+	chordSpan,
 	diatonicPool,
 	KEY_ALTERATIONS,
 	LETTERS,
 	NATURAL_PC,
 	scaleDegrees,
-	spell
+	spell,
+	spellWithLetter
 } from './pitch.js';
 import { pick, weightedPick } from './rng.js';
 import { tripletCrossesBeat } from './two-level-rule.js';
@@ -190,15 +193,110 @@ function makeIntervalSource(
 	};
 }
 
+/**
+ * 分解和弦模式：每次连续取音构成一个完整和弦（自低音起逐音输出，跨小节延续）。
+ * 根音在调内音池中随机；和弦类型与转位在所选集合内随机，
+ * 超出和弦音数的转位（如三和弦的第三转位）回退为原位。
+ * 和弦整体必须落在音域内：先在调内音池里找根音，找不到退回半音根音；
+ * 音域连一个所选和弦都放不下时退回半音随机单音。休止符不消耗和弦音。
+ */
+function makeChordSource(
+	config: PracticeConfig,
+	key: KeyId,
+	rng: () => number
+): PitchSource {
+	const degrees = scaleDegrees(key);
+	const pool = diatonicPool(config.range, key);
+	const [low, high] = config.range;
+	const settings = config.melody.chord;
+	let queue: SpelledPitch[] = [];
+
+	function randomChromaticNote(): SpelledPitch {
+		const midi = low + Math.floor(rng() * (high - low + 1));
+		const spelling = spell(midi, key);
+		return {
+			midi,
+			vexKey: `${spelling.letter}${ACC_SUFFIX[spelling.accidental]}/${spelling.octave}`,
+			accidental: null
+		};
+	}
+
+	/** 生成一个完整和弦的全部音（按输出顺序：上行自低音起，下行自高音起） */
+	function nextChord(): SpelledPitch[] {
+		const type = pick(settings.types, rng);
+		const structure = CHORD_STRUCTURES[type];
+		const usable = settings.inversions.filter((i) => i < structure.length);
+		const inversion = pick(usable.length > 0 ? usable : [0], rng);
+		// 低音（转位音）与最高音相对根音的半音偏移，用于筛选放得下的根音
+		const { bassOffset, topOffset } = chordSpan(structure, inversion);
+
+		const validRoots = pool.filter(
+			(midi) => midi + bassOffset >= low && midi + topOffset <= high
+		);
+		let root: number;
+		let rootLetterIndex: number;
+		if (validRoots.length > 0) {
+			// 根音取调内音：字母与升降沿用该调音级的拼写
+			root = pick(validRoots, rng);
+			const pc = ((root % 12) + 12) % 12;
+			const degree = degrees.find(
+				(d) => d.pc === pc
+			) as (typeof degrees)[number];
+			rootLetterIndex = degree.letterIndex;
+		} else {
+			// 池内没有合适根音：半音窗口内随机取根音，字母按调号拼写
+			const windowLow = low - bassOffset;
+			const windowHigh = high - topOffset;
+			if (windowLow > windowHigh) {
+				// 音域比任何所选和弦都窄：退回半音随机单音
+				return [randomChromaticNote()];
+			}
+			root = windowLow + Math.floor(rng() * (windowHigh - windowLow + 1));
+			rootLetterIndex = LETTERS.indexOf(
+				spell(root, key).letter as (typeof LETTERS)[number]
+			);
+		}
+
+		// 转位 = 把第 inversion 个和弦音移作低音：其前的音升高一个八度排在后面
+		const tones = structure.map((offset, i) => ({
+			midi: root + (i < inversion ? offset + 12 : offset),
+			order: i
+		}));
+		const sequence = [...tones.slice(inversion), ...tones.slice(0, inversion)];
+		// 第 order 个和弦音的字母从根音字母按三度叠置（字母差 2）推进
+		const pitches = sequence.map(({ midi, order }) => {
+			const { letter, acc, octave } = spellWithLetter(
+				midi,
+				(rootLetterIndex + 2 * order) % 7
+			);
+			return {
+				midi,
+				vexKey: `${letter}${ACC_SUFFIX[acc]}/${octave}`,
+				accidental: null
+			};
+		});
+		return settings.direction === 'up' ? pitches : pitches.reverse();
+	}
+
+	return () => {
+		if (queue.length === 0) queue = nextChord();
+		return queue.shift() as SpelledPitch;
+	};
+}
+
 /** 按配置的旋律模式创建取音来源 */
 function makePitchSource(
 	config: PracticeConfig,
 	key: KeyId,
 	rng: () => number
 ): PitchSource {
-	return config.melody.mode === 'interval'
-		? makeIntervalSource(config, key, rng)
-		: makeRandomSource(config, key, rng);
+	if (config.melody.mode === 'interval') {
+		return makeIntervalSource(config, key, rng);
+	}
+	if (config.melody.mode === 'chord') {
+		return makeChordSource(config, key, rng);
+	}
+	return makeRandomSource(config, key, rng);
 }
 
 function makeEvent(

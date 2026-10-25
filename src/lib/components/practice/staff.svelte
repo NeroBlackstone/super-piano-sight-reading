@@ -55,7 +55,7 @@ const STAVE_MARGIN = 12;
 /** 每行（谱表系统）占的像素高度 */
 const ROW_HEIGHT = 140;
 /** 小节的最小宽度（px）：不超过基准事件数的小节就占这么宽 */
-const MIN_MEASURE_WIDTH = 250;
+const MIN_MEASURE_WIDTH = 300;
 /** 小节宽度的基准事件数：8 个音符（含休止符）的小节占最小宽度 */
 const BASE_EVENTS = 8;
 /** 超出基准的每个事件按此倍数计权：密集小节的拉伸比等比例更宽 */

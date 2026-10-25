@@ -8,6 +8,9 @@ import type { PracticeConfig } from '#lib/practice/config.js';
 import { noteName } from '#lib/practice/note.js';
 import {
 	beatUnitFor,
+	chordDirectionLabels,
+	chordInversionLabels,
+	chordTypeLabels,
 	clefLabels,
 	durationLabels,
 	intervalLabels,
@@ -46,15 +49,34 @@ const summaryAccidentals = $derived(
 			})
 		: m.summaryAccidentalsOff()
 );
-const summaryMelody = $derived(
-	config.melody.mode === 'interval'
-		? config.melody.intervals.length > 0
+const summaryMelody = $derived.by(() => {
+	if (config.melody.mode === 'interval') {
+		return config.melody.intervals.length > 0
 			? config.melody.intervals
 					.map((id) => intervalLabels[id]?.() ?? String(id))
 					.join(m.listJoiner())
-			: m.melodyIntervalsNone()
-		: m.melodyModeRandom()
-);
+			: m.melodyIntervalsNone();
+	}
+	if (config.melody.mode === 'chord') {
+		const chord = config.melody.chord;
+		if (chord.types.length === 0 || chord.inversions.length === 0) {
+			return m.melodyChordsNone();
+		}
+		const types = chord.types
+			.map((id) => chordTypeLabels[id]?.() ?? id)
+			.join(m.listJoiner());
+		const inversions = chord.inversions
+			.map((id) => chordInversionLabels[id]?.() ?? String(id))
+			.join(m.listJoiner());
+		return [
+			m.melodyModeChord(),
+			types,
+			inversions,
+			chordDirectionLabels[chord.direction]?.() ?? chord.direction
+		].join(' · ');
+	}
+	return m.melodyModeRandom();
+});
 </script>
 
 {#snippet summaryRow(label: string, value: string)}
@@ -104,7 +126,10 @@ const summaryMelody = $derived(
 				disabled={config.keys.length === 0 ||
 					config.durations.length === 0 ||
 					(config.melody.mode === 'interval' &&
-						config.melody.intervals.length === 0)}
+						config.melody.intervals.length === 0) ||
+					(config.melody.mode === 'chord' &&
+						(config.melody.chord.types.length === 0 ||
+							config.melody.chord.inversions.length === 0))}
 				onclick={startPractice}
 			>
 				<Play class="size-4" />

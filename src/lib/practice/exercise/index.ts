@@ -14,7 +14,12 @@ export { applyDurationSplitRule } from './duration-split-rule.js';
 export type { Exercise, NoteEvent } from './event.js';
 export { eventCost, UNITS } from './event.js';
 export { generateExercise } from './generator.js';
-export { diatonicPool, KEY_ALTERATIONS } from './pitch.js';
+export {
+	CHORD_STRUCTURES,
+	chordFitsPool,
+	diatonicPool,
+	KEY_ALTERATIONS
+} from './pitch.js';
 export { applyRestGroupingRule } from './rest-grouping-rule.js';
 export { mulberry32 } from './rng.js';
 export { applyTwoLevelRule, snapToGrid } from './two-level-rule.js';
