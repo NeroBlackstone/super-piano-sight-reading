@@ -41,6 +41,7 @@ function isValidShape(parsed: PracticeConfig): boolean {
 		parsed.range.length === 2 &&
 		['random', 'interval', 'chord'].includes(parsed.melody?.mode) &&
 		Array.isArray(parsed.melody?.intervals) &&
+		['diatonic', 'custom'].includes(parsed.melody?.chord?.source) &&
 		Array.isArray(parsed.melody?.chord?.types) &&
 		Array.isArray(parsed.melody?.chord?.inversions) &&
 		(parsed.melody?.chord?.direction === 'up' ||

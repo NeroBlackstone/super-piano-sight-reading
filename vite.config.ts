@@ -29,7 +29,12 @@ export default defineConfig({
 				fallback: undefined,
 				precompress: false,
 				strict: true
-			})
+			}),
+
+			// GitHub Pages 部署在 /<仓库名> 子路径下，CI 构建时通过 BASE_PATH 注入；本地 dev 留空
+			paths: {
+				base: (process.env.BASE_PATH ?? '') as '' | `/${string}`
+			}
 		})
 	]
 });

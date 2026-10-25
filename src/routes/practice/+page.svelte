@@ -18,6 +18,7 @@ import {
 } from '#lib/practice/options.js';
 import { loadPracticeConfig } from '#lib/practice/session.js';
 import { goto } from '$app/navigation';
+import { resolve } from '$app/paths';
 
 let config = $state<PracticeConfig | null>(null);
 let exercise = $state<Exercise | null>(null);
@@ -29,7 +30,7 @@ onMount(() => {
 	const saved = loadPracticeConfig();
 	if (!saved) {
 		// 直接访问或会话过期：回到配置页
-		goto('/');
+		goto(resolve('/'));
 		return;
 	}
 	config = saved;
@@ -77,7 +78,7 @@ const info = $derived(
 				type="button"
 				variant="outline"
 				size="sm"
-				onclick={() => goto('/')}
+				onclick={() => goto(resolve('/'))}
 			>
 				<ArrowLeft class="size-4" />
 				{m.practiceBack()}

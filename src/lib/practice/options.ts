@@ -8,6 +8,7 @@ import { m } from '#lib/paraglide/messages.js';
 import type {
 	ChordDirection,
 	ChordInversion,
+	ChordSource,
 	ChordTypeId,
 	Duration,
 	KeyId,
@@ -126,7 +127,21 @@ export const chordDirectionOptions: {
 
 export const chordDirectionLabels: Record<string, () => string> =
 	Object.fromEntries(
-		chordDirectionOptions.map((option) => [option.id, option.label] as const)
+		chordDirectionOptions.map((option) => [option.id, option.label])
+	);
+
+/** 分解和弦来源：顺阶用调内各级三和弦（类型由调号决定），自定义手动选类型 */
+export const chordSourceOptions: {
+	id: ChordSource;
+	label: () => string;
+}[] = [
+	{ id: 'diatonic', label: () => m.chordSourceDiatonic() },
+	{ id: 'custom', label: () => m.chordSourceCustom() }
+];
+
+export const chordSourceLabels: Record<string, () => string> =
+	Object.fromEntries(
+		chordSourceOptions.map((option) => [option.id, option.label])
 	);
 
 export const timeSignatureOptions: {

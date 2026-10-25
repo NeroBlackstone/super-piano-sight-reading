@@ -10,6 +10,7 @@ import {
 	beatUnitFor,
 	chordDirectionLabels,
 	chordInversionLabels,
+	chordSourceLabels,
 	chordTypeLabels,
 	clefLabels,
 	durationLabels,
@@ -20,12 +21,13 @@ import {
 } from '#lib/practice/options.js';
 import { savePracticeConfig } from '#lib/practice/session.js';
 import { goto } from '$app/navigation';
+import { resolve } from '$app/paths';
 
 let { config }: { config: PracticeConfig } = $props();
 
 function startPractice() {
 	savePracticeConfig(config);
-	goto('/practice');
+	goto(resolve('/practice'));
 }
 
 const beatUnit = $derived(beatUnitFor(config.timeSignature));
@@ -59,21 +61,27 @@ const summaryMelody = $derived.by(() => {
 	}
 	if (config.melody.mode === 'chord') {
 		const chord = config.melody.chord;
-		if (chord.types.length === 0 || chord.inversions.length === 0) {
+		if (chord.inversions.length === 0) {
+			return m.melodyChordsNone();
+		}
+		const inversions = chord.inversions
+			.map((id) => chordInversionLabels[id]?.() ?? String(id))
+			.join(m.listJoiner());
+		const direction =
+			chordDirectionLabels[chord.direction]?.() ?? chord.direction;
+		const source = chordSourceLabels[chord.source]?.() ?? chord.source;
+		if (chord.source === 'diatonic') {
+			return [m.melodyModeChord(), source, inversions, direction].join(' · ');
+		}
+		if (chord.types.length === 0) {
 			return m.melodyChordsNone();
 		}
 		const types = chord.types
 			.map((id) => chordTypeLabels[id]?.() ?? id)
 			.join(m.listJoiner());
-		const inversions = chord.inversions
-			.map((id) => chordInversionLabels[id]?.() ?? String(id))
-			.join(m.listJoiner());
-		return [
-			m.melodyModeChord(),
-			types,
-			inversions,
-			chordDirectionLabels[chord.direction]?.() ?? chord.direction
-		].join(' · ');
+		return [m.melodyModeChord(), source, types, inversions, direction].join(
+			' · '
+		);
 	}
 	return m.melodyModeRandom();
 });
@@ -128,8 +136,9 @@ const summaryMelody = $derived.by(() => {
 					(config.melody.mode === 'interval' &&
 						config.melody.intervals.length === 0) ||
 					(config.melody.mode === 'chord' &&
-						(config.melody.chord.types.length === 0 ||
-							config.melody.chord.inversions.length === 0))}
+						(config.melody.chord.inversions.length === 0 ||
+							(config.melody.chord.source === 'custom' &&
+								config.melody.chord.types.length === 0)))}
 				onclick={startPractice}
 			>
 				<Play class="size-4" />

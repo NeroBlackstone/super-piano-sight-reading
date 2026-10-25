@@ -8,6 +8,7 @@
 			"!build",
 			"!project.inlang",
 			"!src/lib/paraglide",
+			"!src/paraglide",
 			"!**/.DS_Store"
 		]
 	},

@@ -9,6 +9,7 @@ import { m } from '#lib/paraglide/messages.js';
 import type {
 	ChordDirection,
 	ChordInversion,
+	ChordSource,
 	ChordTypeId,
 	MelodyMode,
 	PracticeConfig
@@ -16,11 +17,13 @@ import type {
 import {
 	CHORD_STRUCTURES,
 	chordFitsPool,
+	diatonicChordOptions,
 	diatonicPool
 } from '#lib/practice/exercise/index.js';
 import {
 	chordDirectionOptions,
 	chordInversionOptions,
+	chordSourceOptions,
 	intervalOptions,
 	SEVENTH_CHORD_TYPES,
 	seventhTypeOptions,
@@ -38,6 +41,18 @@ function changeMode(value: string) {
 
 function changeIntervals(value: string[]) {
 	config.melody.intervals = value.map(Number);
+}
+
+function changeChordSource(value: string) {
+	if (value === 'diatonic' || value === 'custom') {
+		config.melody.chord.source = value as ChordSource;
+		// 顺阶只有三和弦，第三转位无意义，自动移除
+		if (value === 'diatonic') {
+			config.melody.chord.inversions = config.melody.chord.inversions.filter(
+				(i) => i !== 3
+			);
+		}
+	}
 }
 
 // 三和弦 / 七和弦两组开关共用 types 数组：改一组时保留另一组的已选项
@@ -82,19 +97,29 @@ const rangeTooNarrow = $derived.by(() => {
 	);
 });
 
-// 已选七和弦类型：第三转位只对七和弦开放
+// 自定义来源下已选七和弦类型：第三转位只对七和弦开放（顺阶只有三和弦）
 const hasSeventhType = $derived(
-	config.melody.chord.types.some((id) => SEVENTH_CHORD_TYPES.has(id))
+	config.melody.chord.source === 'custom' &&
+		config.melody.chord.types.some((id) => SEVENTH_CHORD_TYPES.has(id))
 );
 
-// 所选类型 × 转位在任何一个已选调里都放不下任何调内根音时提示
+// 所选和弦在任何一个已选调里都放不下时提示（顺阶看各级三和弦，自定义看所选类型）
 const chordRangeTooNarrow = $derived.by(() => {
 	if (
 		config.melody.mode !== 'chord' ||
-		config.melody.chord.types.length === 0 ||
 		config.melody.chord.inversions.length === 0 ||
 		config.keys.length === 0
 	) {
+		return false;
+	}
+	if (config.melody.chord.source === 'diatonic') {
+		return config.keys.every(
+			(key) =>
+				diatonicChordOptions(config.range, key, config.melody.chord.inversions)
+					.length === 0
+		);
+	}
+	if (config.melody.chord.types.length === 0) {
 		return false;
 	}
 	return config.keys.every((key) =>
@@ -199,23 +224,17 @@ const chordRangeTooNarrow = $derived.by(() => {
 		{:else if config.melody.mode === 'chord'}
 			<fieldset>
 				<legend class="mb-2 text-sm font-medium">
-					{m.chordTriadsLegend()}
+					{m.chordSourceLegend()}
 				</legend>
 				<ToggleGroup
-					type="multiple"
-					value={config.melody.chord.types.filter((id) =>
-						triadTypeOptions.some((option) => option.id === id)
-					)}
-					onValueChange={(value) =>
-						changeChordTypes(
-							triadTypeOptions.map((option) => option.id),
-							value
-						)}
+					type="single"
+					value={config.melody.chord.source}
+					onValueChange={changeChordSource}
 					variant="outline"
 					spacing={2}
 					class="flex w-full flex-wrap gap-2"
 				>
-					{#each triadTypeOptions as option (option.id)}
+					{#each chordSourceOptions as option (option.id)}
 						<ToggleGroupItem
 							value={option.id}
 							size="sm"
@@ -226,40 +245,75 @@ const chordRangeTooNarrow = $derived.by(() => {
 					{/each}
 				</ToggleGroup>
 			</fieldset>
-			<fieldset>
-				<legend class="mb-2 text-sm font-medium">
-					{m.chordSeventhsLegend()}
-				</legend>
-				<ToggleGroup
-					type="multiple"
-					value={config.melody.chord.types.filter((id) =>
-						SEVENTH_CHORD_TYPES.has(id)
-					)}
-					onValueChange={(value) =>
-						changeChordTypes(
-							seventhTypeOptions.map((option) => option.id),
-							value
+			{#if config.melody.chord.source === 'custom'}
+				<fieldset>
+					<legend class="mb-2 text-sm font-medium">
+						{m.chordTriadsLegend()}
+					</legend>
+					<ToggleGroup
+						type="multiple"
+						value={config.melody.chord.types.filter((id) =>
+							triadTypeOptions.some((option) => option.id === id)
 						)}
-					variant="outline"
-					spacing={2}
-					class="flex w-full flex-wrap gap-2"
-				>
-					{#each seventhTypeOptions as option (option.id)}
-						<ToggleGroupItem
-							value={option.id}
-							size="sm"
-							class="h-9 rounded-full px-3.5 data-[state=on]:border-primary! data-[state=on]:bg-primary! data-[state=on]:text-primary-foreground!"
-						>
-							{option.label()}
-						</ToggleGroupItem>
-					{/each}
-				</ToggleGroup>
-				{#if config.melody.chord.types.length === 0}
-					<p class="mt-2 text-xs text-destructive">
-						{m.melodyChordTypesRequired()}
-					</p>
-				{/if}
-			</fieldset>
+						onValueChange={(value) =>
+							changeChordTypes(
+								triadTypeOptions.map((option) => option.id),
+								value
+							)}
+						variant="outline"
+						spacing={2}
+						class="flex w-full flex-wrap gap-2"
+					>
+						{#each triadTypeOptions as option (option.id)}
+							<ToggleGroupItem
+								value={option.id}
+								size="sm"
+								class="h-9 rounded-full px-3.5 data-[state=on]:border-primary! data-[state=on]:bg-primary! data-[state=on]:text-primary-foreground!"
+							>
+								{option.label()}
+							</ToggleGroupItem>
+						{/each}
+					</ToggleGroup>
+				</fieldset>
+				<fieldset>
+					<legend class="mb-2 text-sm font-medium">
+						{m.chordSeventhsLegend()}
+					</legend>
+					<ToggleGroup
+						type="multiple"
+						value={config.melody.chord.types.filter((id) =>
+							SEVENTH_CHORD_TYPES.has(id)
+						)}
+						onValueChange={(value) =>
+							changeChordTypes(
+								seventhTypeOptions.map((option) => option.id),
+								value
+							)}
+						variant="outline"
+						spacing={2}
+						class="flex w-full flex-wrap gap-2"
+					>
+						{#each seventhTypeOptions as option (option.id)}
+							<ToggleGroupItem
+								value={option.id}
+								size="sm"
+								class="h-9 rounded-full px-3.5 data-[state=on]:border-primary! data-[state=on]:bg-primary! data-[state=on]:text-primary-foreground!"
+							>
+								{option.label()}
+							</ToggleGroupItem>
+						{/each}
+					</ToggleGroup>
+					{#if config.melody.chord.types.length === 0}
+						<p class="mt-2 text-xs text-destructive">
+							{m.melodyChordTypesRequired()}
+						</p>
+					{/if}
+				</fieldset>
+			{:else}
+				<p class="text-xs text-muted-foreground">
+					{m.melodyChordDiatonicHint()}
+				</p>
+			{/if}
 			<fieldset>
 				<legend class="mb-2 text-sm font-medium">
 					{m.chordInversionsLegend()}
@@ -317,7 +371,9 @@ const chordRangeTooNarrow = $derived.by(() => {
 					{m.melodyChordRangeTooNarrow()}
 				</p>
 			{/if}
-			<p class="text-xs text-muted-foreground">{m.melodyChordHint()}</p>
+			{#if config.melody.chord.source === 'custom'}
+				<p class="text-xs text-muted-foreground">{m.melodyChordHint()}</p>
+			{/if}
 			<p class="text-xs text-muted-foreground">
 				{m.melodyChordNoAccidentals()}
 			</p>

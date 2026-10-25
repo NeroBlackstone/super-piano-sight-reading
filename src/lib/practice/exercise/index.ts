@@ -17,6 +17,7 @@ export { generateExercise } from './generator.js';
 export {
 	CHORD_STRUCTURES,
 	chordFitsPool,
+	diatonicChordOptions,
 	diatonicPool,
 	KEY_ALTERATIONS
 } from './pitch.js';

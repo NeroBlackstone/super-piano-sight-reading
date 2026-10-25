@@ -1,6 +1,12 @@
 <script lang="ts">
 import { onMount } from 'svelte';
-import type { EasyScore, Factory, StaveNote, StemmableNote, Voice } from 'vexflow';
+import type {
+	EasyScore,
+	Factory,
+	StaveNote,
+	StemmableNote,
+	Voice
+} from 'vexflow';
 import type { KeyId, TimeSignature } from '#lib/practice/config.js';
 import {
 	applyDurationSplitRule,
@@ -244,8 +250,7 @@ function draw(
 				}
 			}
 			// 全曲最后一小节画终止线
-			const isLast =
-				rowIndex === rows.length - 1 && i === rowEvents.length - 1;
+			const isLast = rowIndex === rows.length - 1 && i === rowEvents.length - 1;
 			stave.setEndBarType(isLast ? vf.BarlineType.END : vf.BarlineType.SINGLE);
 			measureIndex++;
 		});
