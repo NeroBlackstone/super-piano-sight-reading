@@ -2,6 +2,7 @@
 import { Layers } from '@lucide/svelte';
 import ProbabilitySetting from '#lib/components/practice/probability-setting.svelte';
 import * as Card from '#lib/components/ui/card/index.js';
+import { Checkbox } from '#lib/components/ui/checkbox/index.js';
 import { Separator } from '#lib/components/ui/separator/index.js';
 import { Slider } from '#lib/components/ui/slider/index.js';
 import {
@@ -11,6 +12,7 @@ import {
 import * as Tooltip from '#lib/components/ui/tooltip/index.js';
 import { m } from '#lib/paraglide/messages.js';
 import {
+	type Duration,
 	type PracticeConfig,
 	TEMPO_MAX,
 	TEMPO_MIN
@@ -25,6 +27,27 @@ import {
 let { config }: { config: PracticeConfig } = $props();
 
 const beatUnit = $derived(beatUnitFor(config.timeSignature));
+
+// 已选时值（保持固定顺序），附点勾选框逐一对应
+const selectedDurations = $derived(
+	durationOptions.filter((option) => config.durations.includes(option.id))
+);
+
+function toggleDot(id: Duration, checked: boolean) {
+	config.dots.durations = checked
+		? [...config.dots.durations, id]
+		: config.dots.durations.filter((d) => d !== id);
+}
+
+// 取消勾选时值（或拍号切换重置时值）时同步移除其附点勾选，保持 dots.durations ⊆ durations
+$effect(() => {
+	const pruned = config.dots.durations.filter((d) =>
+		config.durations.includes(d)
+	);
+	if (pruned.length !== config.dots.durations.length) {
+		config.dots.durations = pruned;
+	}
+});
 </script>
 
 <Card.Root>
@@ -48,9 +71,7 @@ const beatUnit = $derived(beatUnitFor(config.timeSignature));
 				{#each timeSignatureOptions as option (option.id)}
 					<Tooltip.Root>
 						<Tooltip.Trigger
-							>{#snippet child({
-								props
-							})}
+							>{#snippet child({ props })}
 								<ToggleGroupItem
 									{...props}
 									value={option.id}
@@ -120,6 +141,47 @@ const beatUnit = $derived(beatUnitFor(config.timeSignature));
 				<p class="mt-2 text-xs text-muted-foreground">
 					{m.durationsSelected({ count: config.durations.length })}
 				</p>
+
+				<!-- 附点：打勾的时值才会出现对应的附点版本 -->
+				<div class="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2">
+					{#each selectedDurations as option (option.id)}
+						<label
+							for="dots-{option.id}"
+							class="flex cursor-pointer items-center gap-2 text-sm"
+						>
+							<Checkbox
+								id="dots-{option.id}"
+								checked={config.dots.durations.includes(option.id)}
+								onCheckedChange={(checked) =>
+									toggleDot(option.id, checked === true)}
+							/>
+							{m.durationsDotted({ duration: option.label() })}
+						</label>
+					{/each}
+				</div>
+				{#if config.dots.durations.length > 0}
+					<div class="mt-3 space-y-2">
+						<div class="flex items-center justify-between">
+							<span class="text-sm font-medium"
+								>{m.rhythmDotsProbability()}</span
+							>
+							<span class="text-sm tabular-nums text-muted-foreground"
+								>{Math.round(config.dots.probability * 100)}%</span
+							>
+						</div>
+						<Slider
+							type="single"
+							min={0}
+							max={1}
+							step={0.05}
+							bind:value={config.dots.probability}
+							aria-label={m.rhythmDotsAria()}
+						/>
+						<p class="text-xs text-muted-foreground">
+							{m.rhythmDotsProbabilityDesc()}
+						</p>
+					</div>
+				{/if}
 			{/if}
 		</fieldset>
 
@@ -133,16 +195,6 @@ const beatUnit = $derived(beatUnitFor(config.timeSignature));
 			probabilityDescription={m.rhythmRestsProbabilityDesc()}
 			ariaLabel={m.rhythmRestsAria()}
 			feature={config.rests}
-		/>
-
-		<ProbabilitySetting
-			id="dots"
-			label={m.rhythmDotsLabel()}
-			description={m.rhythmDotsDesc()}
-			probabilityLabel={m.rhythmDotsProbability()}
-			probabilityDescription={m.rhythmDotsProbabilityDesc()}
-			ariaLabel={m.rhythmDotsAria()}
-			feature={config.dots}
 		/>
 
 		<ProbabilitySetting

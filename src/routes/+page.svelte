@@ -1,5 +1,5 @@
 <script lang="ts">
-import { onMount } from 'svelte';
+import { onMount, untrack } from 'svelte';
 import ClefCard from '#lib/components/practice/clef-card.svelte';
 import KeysCard from '#lib/components/practice/keys-card.svelte';
 import PracticeCard from '#lib/components/practice/practice-card.svelte';
@@ -34,7 +34,8 @@ onMount(() => {
 // 拍号变化时：按分母重置默认时值（/4 拍 → 四分，/8 拍 → 八分），
 // 并等比换算 BPM 保持绝对速度不变；拍号必选 —— bits-ui 单选组再次点击
 // 会把值清空成 ''，这里直接驳回
-let prevTimeSignature: string = config.timeSignature;
+// 刻意只取初始值（配合 onMount 恢复配置后再同步），用 untrack 跳过响应式追踪
+let prevTimeSignature: string = untrack(() => config.timeSignature);
 $effect.pre(() => {
 	const next: string = config.timeSignature;
 	if (next === prevTimeSignature) return;

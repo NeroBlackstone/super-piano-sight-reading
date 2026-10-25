@@ -12,19 +12,33 @@ export function savePracticeConfig(config: PracticeConfig): void {
 	sessionStorage.setItem(STORAGE_KEY, JSON.stringify(config));
 }
 
-/** 读取上次保存的配置；不存在或结构不完整时返回 null */
+/**
+ * 读取上次保存的配置；返回 null 表示无可用数据，调用方回退到默认配置。
+ *
+ * 存在但解析/结构校验失败时：不兼容任何旧结构，直接清空存储并返回 null。
+ */
 export function loadPracticeConfig(): PracticeConfig | null {
 	const raw = sessionStorage.getItem(STORAGE_KEY);
 	if (!raw) return null;
 	try {
 		const parsed = JSON.parse(raw) as PracticeConfig;
-		// 轻量校验：跳转必经保存流程，这里只需防手改坏数据
-		if (!Array.isArray(parsed.keys) || parsed.keys.length === 0) return null;
-		if (!Array.isArray(parsed.durations) || parsed.durations.length === 0)
-			return null;
-		if (!Array.isArray(parsed.range) || parsed.range.length !== 2) return null;
-		return parsed;
+		if (isValidShape(parsed)) return parsed;
 	} catch {
-		return null;
+		// JSON 损坏，落入下方清空逻辑
 	}
+	sessionStorage.removeItem(STORAGE_KEY);
+	return null;
+}
+
+/** 轻量结构校验：字段缺失或形状不符（含旧版结构，如附点曾是 enabled 开关）即无效 */
+function isValidShape(parsed: PracticeConfig): boolean {
+	return (
+		Array.isArray(parsed.keys) &&
+		parsed.keys.length > 0 &&
+		Array.isArray(parsed.durations) &&
+		parsed.durations.length > 0 &&
+		Array.isArray(parsed.range) &&
+		parsed.range.length === 2 &&
+		Array.isArray(parsed.dots?.durations)
+	);
 }

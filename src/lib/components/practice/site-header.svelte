@@ -48,9 +48,7 @@ const midiText = $derived(
 		<div class="flex shrink-0 items-center gap-2">
 			<Tooltip.Root>
 				<Tooltip.Trigger>
-					{#snippet child({
-						props
-					})}
+					{#snippet child({ props })}
 						<span
 							{...props}
 							class="flex max-w-40 items-center gap-1.5 text-xs text-muted-foreground"
@@ -70,9 +68,7 @@ const midiText = $derived(
 			</Tooltip.Root>
 			<DropdownMenu.Root>
 				<DropdownMenu.Trigger>
-					{#snippet child({
-						props
-					})}
+					{#snippet child({ props })}
 						<Button {...props} variant="ghost" size="sm" type="button">
 							<Languages class="size-4" />
 							{LOCALE_NAMES[getLocale()]}

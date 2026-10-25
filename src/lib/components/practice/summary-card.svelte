@@ -47,10 +47,7 @@ const summaryAccidentals = $derived(
 );
 </script>
 
-{#snippet summaryRow(
-	label: string,
-	value: string
-)}
+{#snippet summaryRow(label: string, value: string)}
 	<div class="flex items-start justify-between gap-3 py-1 text-sm">
 		<span class="shrink-0 text-muted-foreground">{label}</span>
 		<span class="text-right font-medium">{value}</span>

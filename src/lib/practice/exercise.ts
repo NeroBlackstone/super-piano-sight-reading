@@ -317,8 +317,11 @@ function generateMeasure(
 		let triplet = false;
 		let cost = UNITS[duration];
 
-		// 附点：要求占时仍为整数单位且放得下（原型阶段不实现跨小节连音线）
-		if (config.dots.enabled && rng() < config.dots.probability) {
+		// 附点：仅勾选的时值生效；要求占时仍为整数单位且放得下（原型阶段不实现跨小节连音线）
+		if (
+			config.dots.durations.includes(duration) &&
+			rng() < config.dots.probability
+		) {
 			const half = UNITS[duration] / 2;
 			if (Number.isInteger(half) && cost + half <= left) {
 				dots = true;

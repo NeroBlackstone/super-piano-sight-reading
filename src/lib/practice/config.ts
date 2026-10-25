@@ -36,6 +36,14 @@ export interface OptionalFeature {
 	probability: number;
 }
 
+/** 附点：只在勾选的时值上生效，未勾选的时值不出现附点版本 */
+export interface DotSettings {
+	/** 允许附点的时值（应为 durations 的子集） */
+	durations: Duration[];
+	/** 触发概率 0–1，仅 durations 非空时生效 */
+	probability: number;
+}
+
 export interface PracticeConfig {
 	clef: Clef;
 	/** 调号多选，至少 1 个 */
@@ -51,8 +59,8 @@ export interface PracticeConfig {
 	rests: OptionalFeature;
 	/** 临时变音记号 */
 	accidentals: OptionalFeature;
-	/** 附点 */
-	dots: OptionalFeature;
+	/** 附点（按勾选的时值生效） */
+	dots: DotSettings;
 	/** 三连音 */
 	triplets: OptionalFeature;
 	/** 每题小节数 */
@@ -83,7 +91,7 @@ export function createDefaultConfig(): PracticeConfig {
 		durations: ['quarter'],
 		rests: { enabled: true, probability: 0.15 },
 		accidentals: { enabled: false, probability: 0.05 },
-		dots: { enabled: false, probability: 0.15 },
+		dots: { durations: [], probability: 0.15 },
 		triplets: { enabled: false, probability: 0.1 },
 		measuresPerExercise: 16
 	};

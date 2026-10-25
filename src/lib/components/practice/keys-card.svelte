@@ -35,9 +35,7 @@ let { config }: { config: PracticeConfig } = $props();
 				{#each keyOptions as option (option.id)}
 					<Tooltip.Root>
 						<Tooltip.Trigger
-							>{#snippet child({
-								props
-							})}
+							>{#snippet child({ props })}
 								<ToggleGroupItem
 									{...props}
 									value={option.id}

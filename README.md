@@ -10,10 +10,10 @@ A web-based piano sight-reading practice tool. Generate sight-reading exercises 
 
 ## Pages
 
-| Page | Description | Status |
-| --- | --- | --- |
+| Page       | Description                                                                                                                              | Status                                             |
+| ---------- | ---------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
 | Config `/` | Pure configuration: clef, key signature, range, time signature, tempo, durations, rests/accidentals/dots/triplets, exercises per session | ✅ front-end prototype (`src/routes/+page.svelte`) |
-| Practice | Shows the generated score, countdown, judgement, and results | ⬜ planned |
+| Practice   | Shows the generated score, countdown, judgement, and results                                                                             | ⬜ planned                                         |
 
 ## Configuration options (current prototype)
 
