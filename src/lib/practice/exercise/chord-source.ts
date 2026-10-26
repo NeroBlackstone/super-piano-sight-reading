@@ -2,7 +2,6 @@
  * 分解和弦模式的取音来源（公共类型见 pitch-source.ts）。
  */
 import type { ChordTypeId, KeyId, PracticeConfig } from '../config.js';
-import type { PitchSource, SpelledPitch } from './pitch-source.js';
 import {
 	ACC_SUFFIX,
 	CHORD_STRUCTURES,
@@ -15,6 +14,7 @@ import {
 	spell,
 	spellWithLetter
 } from './pitch.js';
+import type { PitchSource, SpelledPitch } from './pitch-source.js';
 import { pick } from './rng.js';
 
 /** 顺阶和弦类型 → 和弦代号后缀（大调顺阶三和弦只有大 / 小 / 减，七和弦只有大七 / 属七 / 小七 / 半减七） */

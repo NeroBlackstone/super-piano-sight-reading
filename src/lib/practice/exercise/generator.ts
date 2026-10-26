@@ -2,7 +2,7 @@
  * 按 PracticeConfig 生成一道视奏题（纯函数，随机源可注入，便于测试与复现）。
  *
  * 生成结果只描述"要演奏什么"（音高、时值、记号），不含任何渲染信息；
- * 谱面渲染由 #lib/components/practice/staff.svelte（VexFlow）完成。
+ * 谱面渲染由 #lib/components/practice/staff/（VexFlow）完成。
  * 取音来源见 pitch-source.ts / chord-source.ts，节奏与小节填充见 rhythm.ts。
  */
 import type { KeyId, PracticeConfig } from '../config.js';

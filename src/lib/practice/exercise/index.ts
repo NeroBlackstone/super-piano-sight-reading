@@ -9,6 +9,7 @@
  * - pitch-source.ts       取音来源公共类型与随机 / 音程模式实现
  * - chord-source.ts       分解和弦模式的取音来源
  * - rhythm.ts             节奏与小节填充（时值、附点、三连音、休止符）
+ * - notation.ts           记谱层变换（记谱事件序列）与跨小节提醒记号
  * - rng.ts                可复现随机源
  * - generator.ts          组装入口：按 PracticeConfig 生成题目
  */
@@ -17,6 +18,7 @@ export { applyDurationSplitRule } from './duration-split-rule.js';
 export type { Exercise, NoteEvent } from './event.js';
 export { eventCost, UNITS } from './event.js';
 export { generateExercise } from './generator.js';
+export { courtesyAccidentals, notatedEvents } from './notation.js';
 export {
 	CHORD_STRUCTURES,
 	chordFitsPool,
