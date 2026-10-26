@@ -1,7 +1,6 @@
 <script lang="ts">
 import { Languages, Piano } from '@lucide/svelte';
 import { onMount } from 'svelte';
-import { Badge } from '#lib/components/ui/badge/index.js';
 import { Button } from '#lib/components/ui/button/index.js';
 import * as DropdownMenu from '#lib/components/ui/dropdown-menu/index.js';
 import * as Tooltip from '#lib/components/ui/tooltip/index.js';
@@ -40,9 +39,6 @@ const midiText = $derived(
 			</span>
 			<span class="truncate text-sm font-semibold tracking-tight"
 				>{m.headerTitle()}</span
-			>
-			<Badge variant="outline" class="hidden sm:inline-flex"
-				>{m.headerBadge()}</Badge
 			>
 		</div>
 		<div class="flex shrink-0 items-center gap-2">
