@@ -154,9 +154,6 @@ const summaryMelody = $derived.by(() => {
 				<RotateCcw class="size-3.5" />
 				{m.summaryReset()}
 			</Button>
-			<p class="mt-3 text-center text-xs text-muted-foreground">
-				{m.summaryFootnote()}
-			</p>
 		</Card.Content>
 	</Card.Root>
 

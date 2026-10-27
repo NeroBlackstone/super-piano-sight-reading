@@ -201,6 +201,8 @@ export function draw(
 	let measureIndex = 0;
 	/** 逐小节的渲染音符（与 notated 顺序一致），draw 完后用于算高亮坐标 */
 	const tickablesByMeasure: StaveNote[][] = [];
+	/** 逐小节的谱表行行顶 y（内容坐标），游标自动翻页按行对齐视口用 */
+	const rowTops: number[] = [];
 	rows.forEach((rowEvents, rowIndex) => {
 		const y = rowIndex * rowHeight + topMargin;
 		// 末行不两端对齐，按期望宽度排（小节独占一行且超宽时收缩到行宽）；
@@ -253,11 +255,12 @@ export function draw(
 			const isLast = rowIndex === rows.length - 1 && i === rowEvents.length - 1;
 			stave.setEndBarType(isLast ? vf.BarlineType.END : vf.BarlineType.SINGLE);
 			tickablesByMeasure[measureIndex] = voice.getTickables() as StaveNote[];
+			rowTops[measureIndex] = y - topMargin;
 			measureIndex++;
 		});
 	});
 
 	factory.draw();
 	// 坐标只能在绘制完成后取（此时符头 X/Y 才是最终值）
-	return computeHighlightBoxes(exercise, notated, tickablesByMeasure);
+	return computeHighlightBoxes(exercise, notated, tickablesByMeasure, rowTops);
 }
