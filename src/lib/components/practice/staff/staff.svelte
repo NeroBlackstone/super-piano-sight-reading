@@ -92,7 +92,8 @@ $effect(() => {
 	<div bind:this={container} class="w-full min-w-0"></div>
 	{#if play}
 		<div class="pointer-events-none absolute inset-0">
-			{#each highlightBoxes as box (box.index)}
+			<!-- index 是生成层下标，连音链 / 休止符拆分后多个渲染音符共用一个，不能当 key -->
+			{#each highlightBoxes as box, i (i)}
 				{@const status = play.statuses[box.index] ?? 'pending'}
 				{#if status !== 'pending'}
 					<div
