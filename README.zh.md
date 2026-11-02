@@ -1,52 +1,74 @@
 # 钢琴视奏练习器
 
-一个网页版钢琴视奏（sight-reading）练习工具。通过自定义调号、谱号、音域、节奏与速度等参数生成视奏题目，帮助钢琴学习者练习快速读谱。
+一个网页版钢琴视奏（sight-reading）练习工具。通过调号、谱号、音域、节奏与速度等参数生成视奏题目，在 MIDI 键盘上跟弹，实时判定并统计正确率。
 
 [English](./README.md) | **简体中文**
 
 ## 当前状态
 
-> 目前处于**原型阶段**：配置页控件可交互，右侧摘要与钢琴键盘高亮会实时跟随，但**尚未接入出题与练习逻辑**，「开始练习」按钮暂不跳转。
+核心闭环已完整可用：**配置 → 出题 → 渲染谱面 → MIDI 跟弹判定 → 成绩统计**。尚缺长期配置持久化（localStorage）、大谱表（双手）与更多练习模式，见下方路线图。
 
-## 页面规划
+在线试用：<https://neroblackstone.github.io/super-piano-sight-reading/>（每次推送到 `master` 由 GitHub Pages 自动部署）
 
-| 页面       | 说明                                                                                | 状态                                     |
-| ---------- | ----------------------------------------------------------------------------------- | ---------------------------------------- |
-| 配置页 `/` | 纯配置：谱号、调号、音域、拍号、速度、时值、休止符/变音记号/附点/三连音、每题小节数 | ✅ 前端原型（`src/routes/+page.svelte`） |
-| 练习页     | 展示生成的谱面、倒计时、判定与结果反馈                                              | ⬜ 待开发                                |
+> 判定基于 **Web MIDI API**，需使用 Chromium 系浏览器（Chrome / Edge）。Firefox 默认不支持——仍可浏览并查看生成的谱面，但跟弹不会被记录。
 
-## 配置项一览（当前原型）
+## 页面
+
+| 页面                 | 说明                                                                                                             | 状态                             |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------- | -------------------------------- |
+| 配置页 `/`           | 纯配置：谱号、调号、音域、旋律模式、拍号、速度、时值、休止符/变音记号/附点/三连音、每题小节数                      | ✅（`src/routes/+page.svelte`）  |
+| 练习页 `/practice`   | 生成谱面 + 倒计时、节拍器、MIDI 判定（演奏 / 练习两种模式）、全屏、成绩覆盖层                                      | ✅（`src/routes/practice/+page.svelte`） |
+
+## 配置项一览
 
 - **谱号**：高音谱号（右手）/ 低音谱号（左手）
-- **调号**：12 个调多选，练习时随机抽取；可选是否包含临时变音记号，并带概率调节
-- **音域**：MIDI 21–108（A0–C8）双滑块调节，带钢琴键盘高亮预览与快捷预设（中央C附近 / 常用音域 / 宽音域 / 全键盘）
+- **调号**：12 个调单选（悬停提示升降号数量）
+- **音域**：MIDI 21–108（A0–C8）双滑块调节，带钢琴键盘高亮预览；八度预设（C1–C2 … C7–C8，可叠加）与谱表快捷预设（高音 / 高音扩展 / 低音 / 低音扩展）
+- **旋律模式** —— 决定下一个音怎么来：
+  - **随机取音**：每个音独立随机；也是唯一可能出现随机临时变音记号的模式
+  - **音程**：每个音从上一个音按多选的度数（同度–八度）移动，方向随机
+  - **分解和弦**：连续分解和弦进行 —— *顺阶*（所选调的调内各级三和弦 / 七和弦，谱表上方标注和弦代号）或 *自定义*（手动选类型：大 / 小 / 减 / 增 / 属七 / 大七 / 小七 / 半减七 / 减七），支持转位（第三转位仅七和弦）与上行 / 下行
 - **拍号**：4/4、3/4、2/4、6/8 —— 分母决定默认时值，也决定 BPM 的一拍单位
 - **速度**：40–208 BPM；切换拍号时等比换算，保持绝对速度不变
-- **时值**：多选全音符、二分、四分、八分、十六分
-- **休止符 / 临时变音记号 / 附点 / 三连音**：各自独立开关 + 概率滑块（0–100%）；关掉后再开保留上次概率
+- **时值**：多选全音符、二分、四分、八分、十六分，每个时值可单独勾选附点版；「频率自然化」按真实出现频率加权抽取，而非等概率
+- **休止符 / 临时变音记号 / 三连音**：各自独立开关 + 概率滑块（0–100%）；关掉后再开保留上次概率。附点按勾选的时值生效；临时变音记号仅随机取音模式可用
 - **每题小节数**：4–32，步长 4
-- **配置摘要**：右侧栏实时汇总当前配置，给出难度提示（入门 / 进阶 / 挑战）并做校验（至少选 1 个调号与时值）
+- **配置摘要**：右侧栏实时汇总当前配置，做校验（至少选 1 个时值），附「开始练习 / 重置」按钮与练习提示
 
-原型尚未包含（规划中）：大谱表（双手）、调式（大调 / 小调）、织体（单音 / 双音 / 三和弦）、每次题数、每题限时。
+## 练习流程
+
+- 配置页把配置存入 `sessionStorage`，练习页挂载时读取（直接访问或会话过期会退回配置页）；「换一题」用同一配置换随机种子重新出题
+- **倒计时**：一小节节拍器点击声，由 Web Audio 合成（不引入音频资源），提前排入音频时钟
+- **演奏模式**：游标按时钟推进；允许小幅提前量命中；弹错不阻塞；时值窗口走完仍未弹的音记为 *漏弹*
+- **练习模式**：事件驱动 —— 弹对当前音才前进，不考虑节奏，休止符直接跳过
+- 判定来自所有已连接 MIDI 输入设备的 note-on 事件；页头有实时连接指示（设备名 / 数量）
+- 谱面由 **VexFlow 5** 渲染（浏览器端按需加载）：多行版面、按拍符杠分组、跨小节提示记号、顺阶模式标注和弦代号；另有三条只改记谱不改演奏的规则保证可读性 —— 不小于一拍的音必须从拍点开始（拆开并连音线）、两等级规则在必标拍点处断开音符、连续休止符按拍点重组且不跨节拍
+- 演奏中当前音高亮并在五线谱下方画游标条，游标越出视野时整页滚动；支持全屏
+- 全曲结束弹出成绩覆盖层：判对 / 弹错 / 漏弹数量与正确率，可「换一题」或「再来一次」
 
 ## 练习配置数据结构
 
 所有练习前参数集中在一份带类型的 `PracticeConfig` 里，定义见 [`src/lib/practice/config.ts`](src/lib/practice/config.ts)：
 
-- 配置页只持有唯一的 `$state<PracticeConfig>` 作为唯一真源；派生展示（难度、摘要、一拍单位）留在组件层 `$derived`，不入配置
-- 开关与概率合并为 `OptionalFeature { enabled, probability }`
+- 配置页只持有唯一的 `$state<PracticeConfig>` 作为唯一真源；派生展示（摘要行、一拍单位、速度术语）留在组件层 `$derived`，不入配置
+- 开关与概率合并为 `OptionalFeature { enabled, probability }`；附点改为 `DotSettings`，携带生效的时值列表
+- 旋律生成由 `MelodySettings { mode, intervals, chord }` 描述，`ChordSettings` 覆盖来源 / 结构 / 类型 / 转位 / 方向
 - `createDefaultConfig()` 每次调用返回全新对象（重置按钮也用它）
 - 边界常量统一导出：`KEYBOARD_MIN/MAX`、`TEMPO_MIN/MAX`、`MEASURES_MIN/MAX/STEP`
-- 为后续 localStorage 持久化做准备（届时加 `version` 字段做迁移）
+- 页面间交接（`src/lib/practice/session.ts`）先做结构校验再信任数据，不匹配即清空 —— 为后续 localStorage 持久化加 `version` 字段留了余地
+
+出题逻辑（`src/lib/practice/exercise/`）是「配置 + 可注入随机源（`mulberry32`）」的纯函数，同一随机种子可复现同一道题；生成的 `Exercise` 只描述要演奏什么（音高、时值、记号），不含任何渲染信息 —— 绘制全部在 `src/lib/components/practice/staff/`。
 
 ## 技术栈
 
 - [SvelteKit 3](https://svelte.dev/docs/kit)（Svelte 5 runes）+ TypeScript
 - [Tailwind CSS 4](https://tailwindcss.com) + [shadcn-svelte](https://shadcn-svelte.com)（`src/lib/components/ui`）
+- [VexFlow 5](https://vexflow.com) 谱面渲染（浏览器端动态加载）
+- [Web MIDI API](https://developer.mozilla.org/en-US/docs/Web/API/Web_MIDI_API) 跟弹判定、[Web Audio API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Audio_API) 倒计时点击声
 - [@lucide/svelte](https://lucide.dev) 图标
 - [@inlang/paraglide-js](https://inlang.com/m/gerre34r/library-inlang-paraglideJs) 国际化（英语 / 中文，页头可切换）
 - [Biome](https://biomejs.dev) 格式化与 lint
-- 包管理器：bun；构建产物：`@sveltejs/adapter-static`（静态站点）
+- 包管理器：bun；构建产物：`@sveltejs/adapter-static`（静态站点），由 `.github/workflows/deploy.yml` 部署到 GitHub Pages
 
 ## 开发
 
@@ -72,14 +94,25 @@ bun run preview    # 预览生产构建
 ```
 src/
 ├── routes/
-│   ├── +layout.svelte     # 全局布局（引入样式与 favicon）
-│   ├── +page.svelte       # 配置页（当前原型）
-│   └── layout.css         # Tailwind 主题与 shadcn 设计令牌
+│   ├── +layout.svelte      # 全局布局（引入样式与 favicon）
+│   ├── +layout.ts          # 全路由预渲染（静态站点）
+│   ├── +page.svelte        # 配置页
+│   ├── practice/
+│   │   └── +page.svelte    # 练习页（谱面、倒计时、判定）
+│   └── layout.css          # Tailwind 主题与 shadcn 设计令牌
 └── lib/
-    ├── components/ui/     # shadcn-svelte 组件（button、card、slider…）
+    ├── components/
+    │   ├── practice/       # 应用组件（配置卡片、页头、staff/）
+    │   │   └── staff/      # VexFlow 渲染、行版面、演奏高亮
+    │   └── ui/             # shadcn-svelte 组件（button、card、slider…）
     ├── practice/
-    │   └── config.ts      # PracticeConfig 类型、默认值、边界常量
-    └── utils.ts           # cn() 等工具函数
+    │   ├── config.ts       # PracticeConfig 类型、默认值、边界常量
+    │   ├── options.ts      # 配置页选项元数据
+    │   ├── session.ts      # 页面间配置交接（sessionStorage）
+    │   ├── midi.svelte.ts  # Web MIDI 输入状态与音符订阅
+    │   ├── exercise/       # 出题逻辑（音高、节奏、记谱规则）
+    │   └── play/           # 跟弹会话：时间轴、节拍器、判定
+    └── utils.ts            # cn() 等工具函数
 ```
 
 ## 脚手架来源
@@ -99,10 +132,12 @@ npx sv add
 ## 路线图
 
 - [x] 项目初始化（SvelteKit + Tailwind + shadcn-svelte）
-- [x] 配置页原型
+- [x] 配置页
 - [x] 练习配置数据结构（`PracticeConfig`）
-- [ ] 练习页原型（谱面展示、计时、结果反馈）
-- [ ] 出题逻辑（按配置生成题目数据）
-- [ ] 谱面渲染（五线谱绘制）
-- [ ] 答题判定与成绩记录
+- [x] 出题逻辑（随机取音 / 音程 / 分解和弦）
+- [x] 谱面渲染（VexFlow：多行版面、符杠分组、记谱规则、和弦代号）
+- [x] 练习页（倒计时、演奏 / 练习模式、全屏）
+- [x] Web MIDI 答题判定与正确率统计
 - [ ] 配置持久化（localStorage）与难度推荐
+- [ ] 大谱表（双手）、调式（大调 / 小调）、织体（单音 / 双音 / 三和弦）
+- [ ] 练习历史与成绩记录

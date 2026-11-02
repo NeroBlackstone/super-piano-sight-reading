@@ -69,6 +69,13 @@ const isOctaveActive = (value: number[]) =>
 // 八度叠加：未选中则并入（取并集的边界），已选中则移除后由剩余选中八度重新合并；
 // 合并出的音域是连续区间，去掉中间八度会补齐空洞，至少保留一个八度
 const toggleOctave = (preset: { id: string; value: number[] }) => {
+	// 快捷预设生效时八度全部视为未选：此时与谱表范围取并集往往原地打转
+	// （八度完全落在谱表范围内时并集仍等于原范围，点击无效果），
+	// 改为直接以该八度作为新音域重新起算
+	if (quickActive()) {
+		config.range = [...preset.value];
+		return;
+	}
 	if (!isOctaveActive(preset.value)) {
 		config.range = [
 			Math.min(config.range[0], preset.value[0]),
